@@ -186,11 +186,71 @@ def test_sanitize() -> bool:
                  "\\" not in E.sanitize_filename("..\\..\\x"))
     ok &= _check("reserved name CON.pdf -> prefixed",
                  E.sanitize_filename("CON.pdf").startswith("_"))
+    ok &= _check("reserved multi-dot CON.tar.pdf -> prefixed",
+                 E.sanitize_filename("CON.tar.pdf").startswith("_"))
+    ok &= _check("reserved NUL.2024.pdf -> prefixed",
+                 E.sanitize_filename("NUL.2024.pdf").startswith("_"))
+    ok &= _check("non-reserved report.CON.pdf left alone",
+                 not E.sanitize_filename("report.CON.pdf").startswith("_"))
     ok &= _check("trailing dot/space removed",
                  not E.sanitize_filename("name.  ").endswith((" ", ".")))
     ok &= _check("empty -> default", E.sanitize_filename("") == "attachment")
     ok &= _check("ensure .pdf extension", E.ensure_pdf_extension("x").endswith(".pdf"))
     ok &= _check("already .pdf not doubled", E.ensure_pdf_extension("x.PDF") == "x.PDF")
+    return ok
+
+
+def test_detection() -> bool:
+    """PDF detection must not fire on text bodies that merely mention %PDF-."""
+    ok = True
+    ok &= _check("real PDF bytes detected", E.looks_like_pdf(MIN_PDF))
+    ok &= _check("PDF with leading whitespace detected",
+                 E.looks_like_pdf(b"\n  " + MIN_PDF))
+    ok &= _check("body mentioning %PDF- mid-text NOT a pdf",
+                 not E.looks_like_pdf(b"my file starts with %PDF-1.7 but won't open"))
+    ok &= _check("text/plain body with %PDF- NOT extracted",
+                 not E.is_pdf_part("text/plain", None,
+                                   b"it begins with %PDF-1.7 apparently"))
+    ok &= _check("application/pdf content-type detected",
+                 E.is_pdf_part("application/pdf", None, b"anything"))
+    ok &= _check(".pdf filename detected regardless of type",
+                 E.is_pdf_part("application/octet-stream", "x.pdf", b"anything"))
+    ok &= _check("octet-stream + magic bytes detected",
+                 E.is_pdf_part("application/octet-stream", "x.bin", MIN_PDF))
+    return ok
+
+
+def test_input_equals_output(workdir: Path) -> bool:
+    """Choosing the same folder for emails and PDFs must still extract."""
+    same = workdir / "same"
+    same.mkdir()
+    m = EmailMessage()
+    m["Subject"] = "io"
+    m.set_content("body")
+    m.add_attachment(MIN_PDF, maintype="application", subtype="pdf", filename="doc.pdf")
+    (same / "mail.eml").write_bytes(m.as_bytes())
+
+    summary = E.run(inputs=[same], output_dir=same, recursive=True, log=lambda *a: None)
+    return _check("input folder == output folder still extracts",
+                  summary.pdfs_saved == 1 and (same / "doc.pdf").exists())
+
+
+def test_symlink_not_followed(workdir: Path) -> bool:
+    """A pre-planted symlink in the output dir must not be written through."""
+    import os
+    outside = workdir / "outside.pdf"
+    dest = workdir / "sym_out"
+    dest.mkdir()
+    link = dest / "scan.pdf"
+    try:
+        link.symlink_to(outside)  # dangling symlink pointing outside dest
+    except (OSError, NotImplementedError):
+        return _check("symlink not followed (skipped: symlinks unavailable)", True)
+
+    chosen = E.unique_path(dest, "scan.pdf")
+    chosen.write_bytes(MIN_PDF)
+    ok = _check("write lands on a real file inside output dir, not the link target",
+                chosen != link and not outside.exists() and chosen.is_file())
     return ok
 
 
@@ -204,9 +264,15 @@ def main() -> int:
         r2 = test_msg_logic()
         print("\nfilename sanitization:")
         r3 = test_sanitize()
+        print("\nPDF detection:")
+        r4 = test_detection()
+        print("\ninput == output folder:")
+        r5 = test_input_equals_output(workdir)
+        print("\nsymlink safety:")
+        r6 = test_symlink_not_followed(workdir)
 
     print()
-    if r1 and r2 and r3:
+    if all((r1, r2, r3, r4, r5, r6)):
         print("ALL TESTS PASSED")
         return 0
     print("SOME TESTS FAILED")

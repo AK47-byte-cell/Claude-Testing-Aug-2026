@@ -49,6 +49,9 @@ EML_SUFFIXES = {".eml"}
 MSG_SUFFIXES = {".msg"}
 EMAIL_SUFFIXES = EML_SUFFIXES | MSG_SUFFIXES
 
+# TNEF ("winmail.dat") wrappers some Outlook senders produce.
+TNEF_CONTENT_TYPES = {"application/ms-tnef", "application/vnd.ms-tnef"}
+
 # Names Windows will not let you create a file with (any extension).
 _WINDOWS_RESERVED = {
     "CON", "PRN", "AUX", "NUL",
@@ -58,6 +61,15 @@ _WINDOWS_RESERVED = {
 
 # Characters that are illegal in Windows file names (plus control chars).
 _ILLEGAL_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+
+# Skip any single email file larger than this before parsing, so a crafted
+# multi-gigabyte message cannot exhaust memory. Generous enough for real
+# scanned-document attachments; override with --max-mb (0 disables).
+DEFAULT_MAX_BYTES = 1024 * 1024 * 1024  # 1 GB
+
+# Keep the whole output path comfortably under the classic Windows 260-char
+# limit (long-path support is off by default on most machines).
+_MAX_PATH_BUDGET = 250
 
 
 @dataclass
@@ -103,8 +115,9 @@ def sanitize_filename(name: Optional[str], default: str = "attachment") -> str:
     if not name:
         name = default
 
-    # Guard against reserved device names like CON or LPT1.
-    stem = name.rsplit(".", 1)[0]
+    # Guard against reserved device names like CON or LPT1. Windows keys these
+    # on the segment before the FIRST dot, so "CON.report.pdf" is reserved too.
+    stem = name.split(".", 1)[0]
     if stem.upper() in _WINDOWS_RESERVED:
         name = "_" + name
 
@@ -123,22 +136,51 @@ def ensure_pdf_extension(name: str) -> str:
     return name if name.lower().endswith(".pdf") else name + ".pdf"
 
 
+def fit_path_length(directory: Path, filename: str, limit: int = _MAX_PATH_BUDGET) -> str:
+    """Shorten *filename* so ``directory\\filename`` stays under *limit* chars.
+
+    Windows' default maximum path length is 260 characters; a long output
+    folder plus a long attachment name can exceed it and make the write
+    fail. Trim the name (keeping its ``.pdf`` extension) rather than losing
+    the PDF. Leaves a little room for a `` (1)`` collision suffix.
+    """
+    budget = limit - (len(str(directory)) + 1) - 6  # 6 = room for " (12)"
+    if len(filename) <= budget or budget < 8:
+        # Already fits, or the directory itself is so long that trimming the
+        # name cannot help -- let any resulting error surface normally.
+        return filename
+    root, dot, ext = filename.rpartition(".")
+    if dot and 0 < len(ext) <= 10:
+        keep = max(1, budget - len(ext) - 1)
+        return root[:keep] + "." + ext
+    return filename[:budget]
+
+
 def unique_path(directory: Path, filename: str, overwrite: bool = False) -> Path:
     """Return a path in *directory* that does not clobber an existing file.
 
     On a collision, appends `` (1)``, `` (2)`` ... before the extension --
     the same convention Windows Explorer uses -- so nothing is silently
     overwritten (important when many emails carry ``scan.pdf``).
+
+    Symlinks are never written through: a pre-existing link (even a broken
+    one) is treated as "taken" so the write always lands on a real file
+    inside *directory*.
     """
+    def taken(p: Path) -> bool:
+        return p.exists() or p.is_symlink()
+
     target = directory / filename
-    if overwrite or not target.exists():
+    if overwrite and not target.is_symlink():
+        return target
+    if not taken(target):
         return target
     stem = target.stem
     suffix = target.suffix
     counter = 1
     while True:
         candidate = directory / f"{stem} ({counter}){suffix}"
-        if not candidate.exists():
+        if not taken(candidate):
             return candidate
         counter += 1
 
@@ -147,22 +189,28 @@ def unique_path(directory: Path, filename: str, overwrite: bool = False) -> Path
 # PDF detection
 # --------------------------------------------------------------------------- #
 def looks_like_pdf(data: Optional[bytes]) -> bool:
-    """True if the bytes begin with the ``%PDF-`` magic marker.
+    """True if the bytes *begin* with the ``%PDF-`` marker.
 
-    The header is normally at byte 0, but a few producers emit a little
-    junk first, so we look within the first kilobyte.
+    Checks the signature at the start (allowing only leading whitespace), not
+    anywhere in the payload -- otherwise an email body or document that merely
+    mentions ``%PDF-`` would be mistaken for a PDF.
     """
     if not data:
         return False
-    return b"%PDF-" in data[:1024]
+    return data.lstrip()[:5] == b"%PDF-"
 
 
 def is_pdf_part(content_type: str, filename: Optional[str], data: Optional[bytes]) -> bool:
     """Decide whether an email part is a PDF, by type, name, or content."""
-    if content_type.lower() in PDF_CONTENT_TYPES:
+    ctype = content_type.lower()
+    if ctype in PDF_CONTENT_TYPES:
         return True
     if filename and filename.lower().endswith(".pdf"):
         return True
+    # Fall back to sniffing the magic bytes, but never for text parts -- an
+    # email's plain-text or HTML body must not be mistaken for an attachment.
+    if ctype.startswith("text/"):
+        return False
     return looks_like_pdf(data)
 
 
@@ -182,6 +230,9 @@ def extract_from_eml(path: Path) -> list[FoundPdf]:
         if part.is_multipart():
             continue
         content_type = part.get_content_type()
+        # TNEF wrappers are handled separately below, not as raw attachments.
+        if content_type.lower() in TNEF_CONTENT_TYPES:
+            continue
         filename = part.get_filename()  # policy.default decodes RFC-2047 names
 
         try:
@@ -212,8 +263,7 @@ def _extract_tnef_pdfs(message: EmailMessage, path: Path, start_index: int) -> l
             continue
         ctype = part.get_content_type().lower()
         fname = (part.get_filename() or "").lower()
-        is_tnef = ctype in {"application/ms-tnef", "application/vnd.ms-tnef"} or fname == "winmail.dat"
-        if not is_tnef:
+        if ctype not in TNEF_CONTENT_TYPES and fname != "winmail.dat":
             continue
         try:
             import tnefparse  # optional dependency
@@ -229,7 +279,7 @@ def _extract_tnef_pdfs(message: EmailMessage, path: Path, start_index: int) -> l
                 name = getattr(att, "name", None)
                 if isinstance(name, bytes):
                     name = name.decode("utf-8", "replace")
-                if is_pdf_part("application/octet-stream", name, data) and data:
+                if data and is_pdf_part("application/octet-stream", name, data):
                     counter += 1
                     found.append(_build_found_pdf(path, name, data, counter))
         except Exception:
@@ -249,11 +299,10 @@ def extract_from_msg(path: Path) -> list[FoundPdf]:
     import extract_msg  # raises ImportError if not installed
 
     found: list[FoundPdf] = []
-    counter = 0
     message = extract_msg.openMsg(str(path)) if hasattr(extract_msg, "openMsg") \
         else extract_msg.Message(str(path))
     try:
-        counter = _walk_msg_attachments(message, path, found, counter)
+        _walk_msg_attachments(message, path, found, 0)
     finally:
         try:
             message.close()
@@ -312,17 +361,13 @@ def dispatch(path: Path) -> list[FoundPdf]:
     return []
 
 
-def iter_email_files(inputs: Iterable[Path], recursive: bool, output_dir: Path) -> Iterator[Path]:
-    """Yield every email file under the given inputs.
+def iter_email_files(inputs: Iterable[Path], recursive: bool) -> Iterator[Path]:
+    """Yield every email file under the given inputs, without duplicates.
 
-    Files that live inside *output_dir* are skipped so we never try to
-    re-read our own results.
+    Only ``.eml``/``.msg`` files are ever read and only ``.pdf`` files are
+    ever written, so there is no risk of re-reading our own output -- the
+    input and output folders may safely be the same.
     """
-    try:
-        output_resolved = output_dir.resolve()
-    except OSError:
-        output_resolved = output_dir
-
     seen: set[Path] = set()
     for item in inputs:
         if item.is_file():
@@ -339,8 +384,6 @@ def iter_email_files(inputs: Iterable[Path], recursive: bool, output_dir: Path) 
                 resolved = candidate.resolve()
             except OSError:
                 resolved = candidate
-            if output_resolved in resolved.parents:
-                continue
             if resolved in seen:
                 continue
             seen.add(resolved)
@@ -358,14 +401,28 @@ def run(
     prefix_source: bool = False,
     overwrite: bool = False,
     dry_run: bool = False,
+    max_bytes: int = DEFAULT_MAX_BYTES,
     log=print,
 ) -> Summary:
     """Extract PDFs from *inputs* into *output_dir* and return a Summary."""
     summary = Summary()
     missing_msg_reported = False
 
-    for email_path in iter_email_files(inputs, recursive, output_dir):
+    for email_path in iter_email_files(inputs, recursive):
         summary.emails_scanned += 1
+
+        # Guard against pathologically large messages exhausting memory.
+        if max_bytes:
+            try:
+                size = email_path.stat().st_size
+            except OSError:
+                size = 0
+            if size > max_bytes:
+                limit_mb = max_bytes // (1024 * 1024)
+                summary.errors.append((email_path, f"skipped: larger than {limit_mb} MB"))
+                log(f"  ! Skipping {email_path.name}: larger than {limit_mb} MB")
+                continue
+
         try:
             pdfs = dispatch(email_path)
         except ImportError:
@@ -403,7 +460,14 @@ def run(
                 summary.saved_paths.append(target)
                 continue
 
-            destination_dir.mkdir(parents=True, exist_ok=True)
+            try:
+                destination_dir.mkdir(parents=True, exist_ok=True)
+            except OSError as exc:
+                summary.errors.append((email_path, f"cannot create folder {destination_dir}: {exc}"))
+                log(f"      ! Cannot create folder {destination_dir}: {exc}")
+                continue
+
+            filename = fit_path_length(destination_dir, filename)
             target = unique_path(destination_dir, filename, overwrite=overwrite)
             try:
                 target.write_bytes(pdf.data)
@@ -418,6 +482,20 @@ def run(
     return summary
 
 
+def explain_empty_result(summary: Summary) -> Optional[str]:
+    """A friendly reason when nothing was extracted, or None if PDFs were saved."""
+    if summary.pdfs_saved:
+        return None
+    if summary.emails_scanned == 0:
+        return ("No .eml or .msg email files were found there. Make sure you "
+                "picked the folder that actually contains the saved emails.")
+    if summary.skipped_msg and len(summary.skipped_msg) == summary.emails_scanned:
+        return ("Every email was an Outlook .msg file, which needs an extra "
+                "add-on. Install it with:  pip install extract-msg")
+    return (f"Looked in {summary.emails_scanned} email(s) but none contained a "
+            f"PDF attachment.")
+
+
 def print_summary(summary: Summary, dry_run: bool, log=print) -> None:
     log("")
     log("=" * 60)
@@ -430,6 +508,9 @@ def print_summary(summary: Summary, dry_run: bool, log=print) -> None:
         log(f"{len(summary.errors)} file(s) had problems:")
         for path, err in summary.errors:
             log(f"   - {path.name}: {err}")
+    reason = explain_empty_result(summary)
+    if reason:
+        log(reason)
     log("=" * 60)
 
 
@@ -476,6 +557,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Overwrite existing files instead of adding ' (1)', ' (2)' ...",
     )
     parser.add_argument(
+        "--max-mb", type=float, default=1024,
+        help="Skip any single email file larger than this many megabytes "
+             "(default: 1024; use 0 for no limit).",
+    )
+    parser.add_argument(
         "--dry-run", action="store_true",
         help="Show what would be extracted without writing any files.",
     )
@@ -494,10 +580,10 @@ def default_output_for(inputs: list[Path]) -> Path:
 
 
 def run_gui() -> int:
-    """Tiny Tkinter front-end for non-technical users / double-clicking."""
+    """Point-and-click front-end for non-technical users / double-clicking."""
     try:
         import tkinter as tk
-        from tkinter import filedialog, messagebox
+        from tkinter import filedialog, messagebox, ttk
     except Exception:
         print(
             "A graphical window is not available in this environment.\n"
@@ -507,41 +593,142 @@ def run_gui() -> int:
         )
         return 2
 
+    import threading
+
     root = tk.Tk()
-    root.withdraw()
+    root.title("Extract PDFs from emails")
+    root.minsize(560, 0)
+    try:
+        root.eval("tk::PlaceWindow . center")
+    except Exception:
+        pass
 
-    messagebox.showinfo(
-        "Extract PDFs from emails",
-        "Next you'll choose:\n"
-        "  1. the folder that holds your saved emails (.eml / .msg)\n"
-        "  2. the folder to save the extracted PDFs into.",
-    )
-    in_dir = filedialog.askdirectory(title="Step 1 of 2: folder containing your emails")
-    if not in_dir:
-        return 0
-    out_dir = filedialog.askdirectory(title="Step 2 of 2: where to save the PDFs")
-    if not out_dir:
-        return 0
+    pad = {"padx": 12, "pady": 6}
+    in_var = tk.StringVar()
+    out_var = tk.StringVar()
+    group_var = tk.BooleanVar(value=True)
+    status_var = tk.StringVar(value="")
 
-    lines: list[str] = []
-    summary = run(
-        inputs=[Path(in_dir)],
-        output_dir=Path(out_dir),
-        recursive=True,
-        log=lines.append,
-    )
-    print_summary(summary, dry_run=False, log=lines.append)
+    tk.Label(
+        root, justify="left",
+        text="Pull every PDF attachment out of your saved emails (.eml / .msg)\n"
+             "and copy them into a folder of their own.",
+    ).grid(row=0, column=0, columnspan=3, sticky="w", **pad)
 
-    body = f"Extracted {summary.pdfs_saved} PDF(s) from " \
-           f"{summary.emails_scanned} email file(s)."
-    if summary.skipped_msg:
-        body += (f"\n\nSkipped {len(summary.skipped_msg)} Outlook .msg file(s). "
-                 f"To include them, install extract-msg (see the README).")
-    if summary.errors:
-        body += f"\n\n{len(summary.errors)} file(s) had problems -- see details."
-    body += f"\n\nPDFs saved in:\n{out_dir}"
-    messagebox.showinfo("Done", body)
-    print("\n".join(lines))
+    tk.Label(root, text="Emails folder:").grid(row=1, column=0, sticky="e", **pad)
+    tk.Entry(root, textvariable=in_var, width=48).grid(row=1, column=1, sticky="we", **pad)
+
+    tk.Label(root, text="Save PDFs to:").grid(row=2, column=0, sticky="e", **pad)
+    tk.Entry(root, textvariable=out_var, width=48).grid(row=2, column=1, sticky="we", **pad)
+
+    tk.Checkbutton(
+        root, variable=group_var,
+        text="Keep each email's PDFs in their own sub-folder "
+             "(helps track which email each PDF came from)",
+        justify="left", wraplength=520,
+    ).grid(row=3, column=0, columnspan=3, sticky="w", **pad)
+
+    progress = ttk.Progressbar(root, mode="indeterminate")
+    status = tk.Label(root, textvariable=status_var, justify="left", fg="#444")
+    status.grid(row=5, column=0, columnspan=3, sticky="w", **pad)
+
+    root.columnconfigure(1, weight=1)
+
+    def browse_in() -> None:
+        chosen = filedialog.askdirectory(title="Folder containing your emails")
+        if chosen:
+            in_var.set(chosen)
+            if not out_var.get():
+                out_var.set(str(Path(chosen) / "_Extracted_PDFs"))
+
+    def browse_out() -> None:
+        chosen = filedialog.askdirectory(title="Where to save the PDFs")
+        if chosen:
+            out_var.set(chosen)
+
+    tk.Button(root, text="Browse...", command=browse_in).grid(row=1, column=2, **pad)
+    tk.Button(root, text="Browse...", command=browse_out).grid(row=2, column=2, **pad)
+
+    def show_done(summary: Summary, out_dir: str) -> None:
+        body = (f"Extracted {summary.pdfs_saved} PDF(s) from "
+                f"{summary.emails_scanned} email file(s).")
+        reason = explain_empty_result(summary)
+        if reason:
+            body += f"\n\n{reason}"
+        if summary.skipped_msg:
+            body += (f"\n\nSkipped {len(summary.skipped_msg)} Outlook .msg file(s). "
+                     f"To include them, install extract-msg (see the README).")
+        if summary.errors:
+            body += f"\n\n{len(summary.errors)} file(s) had problems:"
+            for path, err in summary.errors[:5]:
+                body += f"\n   - {path.name}: {err}"
+            if len(summary.errors) > 5:
+                body += f"\n   ... and {len(summary.errors) - 5} more."
+        if summary.pdfs_saved:
+            body += f"\n\nPDFs saved in:\n{out_dir}"
+        status_var.set(f"Done - {summary.pdfs_saved} PDF(s) saved.")
+        messagebox.showinfo("Done", body)
+
+    def start() -> None:
+        in_dir = in_var.get().strip()
+        out_dir = out_var.get().strip()
+        if not in_dir:
+            messagebox.showwarning("Choose a folder", "Please choose the folder that holds your emails.")
+            return
+        if not Path(in_dir).is_dir():
+            messagebox.showwarning("Folder not found", f"This folder does not exist:\n{in_dir}")
+            return
+        if not out_dir:
+            out_dir = str(Path(in_dir) / "_Extracted_PDFs")
+            out_var.set(out_dir)
+
+        run_btn.config(state="disabled")
+        progress.grid(row=4, column=0, columnspan=3, sticky="we", **pad)
+        progress.start(12)
+        status_var.set("Working... this can take a while for large folders.")
+
+        results: dict = {}
+
+        def worker() -> None:
+            lines: list[str] = []
+            try:
+                results["summary"] = run(
+                    inputs=[Path(in_dir)],
+                    output_dir=Path(out_dir),
+                    recursive=True,
+                    group_by_email=group_var.get(),
+                    log=lines.append,
+                )
+                results["lines"] = lines
+            except Exception as exc:  # never let the worker die silently
+                results["error"] = exc
+
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+
+        def poll() -> None:
+            if thread.is_alive():
+                root.after(120, poll)
+                return
+            progress.stop()
+            progress.grid_remove()
+            run_btn.config(state="normal")
+            if "error" in results:
+                status_var.set("Something went wrong.")
+                messagebox.showerror(
+                    "Error",
+                    f"Could not finish extracting:\n\n{results['error']}\n\n"
+                    f"Check that the 'Save PDFs to' folder is somewhere you can write to.",
+                )
+                return
+            show_done(results["summary"], out_dir)
+
+        root.after(120, poll)
+
+    run_btn = tk.Button(root, text="Extract PDFs", default="active", command=start)
+    run_btn.grid(row=6, column=0, columnspan=3, pady=(4, 12))
+
+    root.mainloop()
     return 0
 
 
@@ -579,6 +766,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         return 2
 
     output_dir = args.output or default_output_for(inputs)
+    max_bytes = int(args.max_mb * 1024 * 1024) if args.max_mb and args.max_mb > 0 else 0
 
     print(f"Scanning for emails in: {', '.join(str(p) for p in inputs)}")
     print(f"Saving PDFs to:         {output_dir}")
@@ -594,6 +782,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         prefix_source=args.prefix_source,
         overwrite=args.overwrite,
         dry_run=args.dry_run,
+        max_bytes=max_bytes,
     )
     print_summary(summary, dry_run=args.dry_run)
     return 0 if not summary.errors else 1

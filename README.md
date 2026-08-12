@@ -24,10 +24,15 @@ left alone.
    **"Add Python to PATH"**, then click *Install Now*.
 2. **Download this folder** to your PC (e.g. to your Desktop).
 3. **Double-click `Extract PDFs.bat`.**
-   A small window walks you through two steps:
-   - choose the folder that holds your saved emails, then
-   - choose where to save the extracted PDFs.
-4. When it finishes it tells you how many PDFs it saved and where.
+   A small window opens where you:
+   - choose the folder that holds your saved emails,
+   - choose where to save the extracted PDFs, and
+   - optionally tick *"Keep each email's PDFs in their own sub-folder"*
+     (on by default) so you can always tell which email each PDF came from.
+
+   Then click **Extract PDFs**. A progress bar runs while it works.
+4. When it finishes it tells you how many PDFs it saved and where, and lists
+   any files it had trouble with.
 
 ### Even quicker: drag and drop
 
@@ -70,6 +75,7 @@ python extract_pdfs.py message1.eml message2.msg -o "C:\PDFs"
 | `--group-by-email` | Put each email's PDFs in their own sub-folder (named after the email). Good for keeping track of which PDF came from which message. |
 | `--prefix-source` | Prefix each PDF's file name with the source email's name. |
 | `--overwrite` | Overwrite files that already exist instead of adding ` (1)`, ` (2)`, … |
+| `--max-mb` | Skip any single email file larger than this many MB (default `1024`; `0` = no limit). |
 | `--dry-run` | Show what would be extracted without writing anything. |
 | `--gui` | Force the point-and-click window even when you pass arguments. |
 
