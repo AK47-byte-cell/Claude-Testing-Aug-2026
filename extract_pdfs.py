@@ -579,11 +579,17 @@ def default_output_for(inputs: list[Path]) -> Path:
     return base / "_Extracted_PDFs"
 
 
-def run_gui() -> int:
-    """Point-and-click front-end for non-technical users / double-clicking."""
+def run_gui(auto_close_ms: Optional[int] = None) -> int:
+    """The Email PDF Extractor desktop app window.
+
+    This is what opens when you launch the app (or double-click the ``.bat``
+    / the built ``.exe``) with no arguments. *auto_close_ms* is only used by
+    the tests/screenshot tooling to close the window automatically.
+    """
     try:
         import tkinter as tk
         from tkinter import filedialog, messagebox, ttk
+        from tkinter.scrolledtext import ScrolledText
     except Exception:
         print(
             "A graphical window is not available in this environment.\n"
@@ -593,46 +599,71 @@ def run_gui() -> int:
         )
         return 2
 
+    import os
+    import queue
     import threading
 
     root = tk.Tk()
-    root.title("Extract PDFs from emails")
-    root.minsize(560, 0)
+    root.title("Email PDF Extractor")
+    root.minsize(660, 520)
+    try:
+        ttk.Style().theme_use("clam")
+    except Exception:
+        pass
     try:
         root.eval("tk::PlaceWindow . center")
     except Exception:
         pass
 
-    pad = {"padx": 12, "pady": 6}
+    outer = ttk.Frame(root, padding=16)
+    outer.pack(fill="both", expand=True)
+    outer.columnconfigure(1, weight=1)
+
     in_var = tk.StringVar()
     out_var = tk.StringVar()
     group_var = tk.BooleanVar(value=True)
-    status_var = tk.StringVar(value="")
+    status_var = tk.StringVar(value="Choose your emails folder to begin.")
+    log_queue: "queue.Queue[Optional[str]]" = queue.Queue()
 
-    tk.Label(
-        root, justify="left",
-        text="Pull every PDF attachment out of your saved emails (.eml / .msg)\n"
-             "and copy them into a folder of their own.",
-    ).grid(row=0, column=0, columnspan=3, sticky="w", **pad)
+    # --- Header -----------------------------------------------------------
+    header = ttk.Frame(outer)
+    header.grid(row=0, column=0, columnspan=3, sticky="we", pady=(0, 12))
+    ttk.Label(header, text="\U0001F4CE  Email PDF Extractor",
+              font=("Segoe UI", 16, "bold")).pack(anchor="w")
+    ttk.Label(header, foreground="#555",
+              text="Pull every PDF attachment out of your saved emails "
+                   "(.eml / .msg) into a folder of their own.").pack(anchor="w")
 
-    tk.Label(root, text="Emails folder:").grid(row=1, column=0, sticky="e", **pad)
-    tk.Entry(root, textvariable=in_var, width=48).grid(row=1, column=1, sticky="we", **pad)
+    # --- Folder pickers ---------------------------------------------------
+    ttk.Label(outer, text="Emails folder:").grid(row=1, column=0, sticky="e", padx=(0, 8), pady=6)
+    ttk.Entry(outer, textvariable=in_var).grid(row=1, column=1, sticky="we", pady=6)
 
-    tk.Label(root, text="Save PDFs to:").grid(row=2, column=0, sticky="e", **pad)
-    tk.Entry(root, textvariable=out_var, width=48).grid(row=2, column=1, sticky="we", **pad)
+    ttk.Label(outer, text="Save PDFs to:").grid(row=2, column=0, sticky="e", padx=(0, 8), pady=6)
+    ttk.Entry(outer, textvariable=out_var).grid(row=2, column=1, sticky="we", pady=6)
 
-    tk.Checkbutton(
-        root, variable=group_var,
+    ttk.Checkbutton(
+        outer, variable=group_var,
         text="Keep each email's PDFs in their own sub-folder "
              "(helps track which email each PDF came from)",
-        justify="left", wraplength=520,
-    ).grid(row=3, column=0, columnspan=3, sticky="w", **pad)
+    ).grid(row=3, column=0, columnspan=3, sticky="w", pady=(4, 8))
 
-    progress = ttk.Progressbar(root, mode="indeterminate")
-    status = tk.Label(root, textvariable=status_var, justify="left", fg="#444")
-    status.grid(row=5, column=0, columnspan=3, sticky="w", **pad)
+    # --- Results log ------------------------------------------------------
+    results_box = ScrolledText(outer, height=12, width=76, state="disabled",
+                               font=("Consolas", 9), wrap="word",
+                               background="#1e1e1e", foreground="#e6e6e6",
+                               insertbackground="#e6e6e6")
+    results_box.grid(row=5, column=0, columnspan=3, sticky="nsew", pady=(10, 6))
+    outer.rowconfigure(5, weight=1)
 
-    root.columnconfigure(1, weight=1)
+    progress = ttk.Progressbar(outer, mode="indeterminate")
+    ttk.Label(outer, textvariable=status_var, foreground="#555").grid(
+        row=7, column=0, columnspan=3, sticky="w", pady=(4, 0))
+
+    def append_log(text: str) -> None:
+        results_box.configure(state="normal")
+        results_box.insert("end", text + "\n")
+        results_box.see("end")
+        results_box.configure(state="disabled")
 
     def browse_in() -> None:
         chosen = filedialog.askdirectory(title="Folder containing your emails")
@@ -646,28 +677,22 @@ def run_gui() -> int:
         if chosen:
             out_var.set(chosen)
 
-    tk.Button(root, text="Browse...", command=browse_in).grid(row=1, column=2, **pad)
-    tk.Button(root, text="Browse...", command=browse_out).grid(row=2, column=2, **pad)
+    ttk.Button(outer, text="Browse...", command=browse_in).grid(row=1, column=2, padx=(8, 0), pady=6)
+    ttk.Button(outer, text="Browse...", command=browse_out).grid(row=2, column=2, padx=(8, 0), pady=6)
 
-    def show_done(summary: Summary, out_dir: str) -> None:
-        body = (f"Extracted {summary.pdfs_saved} PDF(s) from "
-                f"{summary.emails_scanned} email file(s).")
-        reason = explain_empty_result(summary)
-        if reason:
-            body += f"\n\n{reason}"
-        if summary.skipped_msg:
-            body += (f"\n\nSkipped {len(summary.skipped_msg)} Outlook .msg file(s). "
-                     f"To include them, install extract-msg (see the README).")
-        if summary.errors:
-            body += f"\n\n{len(summary.errors)} file(s) had problems:"
-            for path, err in summary.errors[:5]:
-                body += f"\n   - {path.name}: {err}"
-            if len(summary.errors) > 5:
-                body += f"\n   ... and {len(summary.errors) - 5} more."
-        if summary.pdfs_saved:
-            body += f"\n\nPDFs saved in:\n{out_dir}"
-        status_var.set(f"Done - {summary.pdfs_saved} PDF(s) saved.")
-        messagebox.showinfo("Done", body)
+    def open_output() -> None:
+        path = out_var.get().strip()
+        if not path or not Path(path).is_dir():
+            return
+        try:
+            if hasattr(os, "startfile"):
+                os.startfile(path)  # type: ignore[attr-defined]  # Windows
+            else:
+                import subprocess
+                opener = "open" if sys.platform == "darwin" else "xdg-open"
+                subprocess.Popen([opener, path])
+        except Exception:
+            pass
 
     def start() -> None:
         in_dir = in_var.get().strip()
@@ -682,54 +707,101 @@ def run_gui() -> int:
             out_dir = str(Path(in_dir) / "_Extracted_PDFs")
             out_var.set(out_dir)
 
+        results_box.configure(state="normal")
+        results_box.delete("1.0", "end")
+        results_box.configure(state="disabled")
+        append_log(f"Scanning: {in_dir}")
+        append_log(f"Saving to: {out_dir}\n")
+
         run_btn.config(state="disabled")
-        progress.grid(row=4, column=0, columnspan=3, sticky="we", **pad)
+        open_btn.config(state="disabled")
+        progress.grid(row=6, column=0, columnspan=3, sticky="we", pady=(4, 4))
         progress.start(12)
         status_var.set("Working... this can take a while for large folders.")
 
-        results: dict = {}
+        state: dict = {}
 
         def worker() -> None:
-            lines: list[str] = []
             try:
-                results["summary"] = run(
+                state["summary"] = run(
                     inputs=[Path(in_dir)],
                     output_dir=Path(out_dir),
                     recursive=True,
                     group_by_email=group_var.get(),
-                    log=lines.append,
+                    log=log_queue.put,
                 )
-                results["lines"] = lines
             except Exception as exc:  # never let the worker die silently
-                results["error"] = exc
+                state["error"] = exc
+            log_queue.put(None)  # sentinel: worker finished
 
-        thread = threading.Thread(target=worker, daemon=True)
-        thread.start()
+        threading.Thread(target=worker, daemon=True).start()
 
-        def poll() -> None:
-            if thread.is_alive():
-                root.after(120, poll)
-                return
+        def finish() -> None:
             progress.stop()
             progress.grid_remove()
             run_btn.config(state="normal")
-            if "error" in results:
+            if "error" in state:
                 status_var.set("Something went wrong.")
                 messagebox.showerror(
                     "Error",
-                    f"Could not finish extracting:\n\n{results['error']}\n\n"
+                    f"Could not finish extracting:\n\n{state['error']}\n\n"
                     f"Check that the 'Save PDFs to' folder is somewhere you can write to.",
                 )
                 return
-            show_done(results["summary"], out_dir)
+            summary = state["summary"]
+            print_summary(summary, dry_run=False, log=append_log)
+            status_var.set(f"Done - {summary.pdfs_saved} PDF(s) saved.")
+            if summary.pdfs_saved:
+                open_btn.config(state="normal")
+            _show_done_dialog(messagebox, summary, out_dir)
 
-        root.after(120, poll)
+        def poll() -> None:
+            try:
+                while True:
+                    item = log_queue.get_nowait()
+                    if item is None:
+                        finish()
+                        return
+                    append_log(item)
+            except queue.Empty:
+                pass
+            root.after(80, poll)
 
-    run_btn = tk.Button(root, text="Extract PDFs", default="active", command=start)
-    run_btn.grid(row=6, column=0, columnspan=3, pady=(4, 12))
+        root.after(80, poll)
+
+    buttons = ttk.Frame(outer)
+    buttons.grid(row=4, column=0, columnspan=3, sticky="w", pady=(2, 2))
+    run_btn = ttk.Button(buttons, text="Extract PDFs", command=start)
+    run_btn.pack(side="left")
+    open_btn = ttk.Button(buttons, text="Open output folder", command=open_output, state="disabled")
+    open_btn.pack(side="left", padx=(8, 0))
+
+    if auto_close_ms is not None:
+        root.after(auto_close_ms, root.destroy)
 
     root.mainloop()
     return 0
+
+
+def _show_done_dialog(messagebox, summary: Summary, out_dir: str) -> None:
+    """Show the final summary in a dialog box."""
+    body = (f"Extracted {summary.pdfs_saved} PDF(s) from "
+            f"{summary.emails_scanned} email file(s).")
+    reason = explain_empty_result(summary)
+    if reason:
+        body += f"\n\n{reason}"
+    if summary.skipped_msg:
+        body += (f"\n\nSkipped {len(summary.skipped_msg)} Outlook .msg file(s). "
+                 f"To include them, install extract-msg (see the README).")
+    if summary.errors:
+        body += f"\n\n{len(summary.errors)} file(s) had problems:"
+        for path, err in summary.errors[:5]:
+            body += f"\n   - {path.name}: {err}"
+        if len(summary.errors) > 5:
+            body += f"\n   ... and {len(summary.errors) - 5} more."
+    if summary.pdfs_saved:
+        body += f"\n\nPDFs saved in:\n{out_dir}"
+    messagebox.showinfo("Done", body)
 
 
 def _configure_console_encoding() -> None:
@@ -758,21 +830,37 @@ def main(argv: Optional[list[str]] = None) -> int:
     if args.gui or not args.inputs:
         return run_gui()
 
+    # In a windowed .exe build there is no console (sys.stdout is None), yet a
+    # user may still drag a folder onto the app. Collect messages and show them
+    # in a dialog instead of printing (which would crash on a None stream).
+    windowed = sys.stdout is None
+
+    def emit(*parts: object) -> None:
+        if windowed:
+            return  # no console; the final summary is shown in a dialog
+        try:
+            print(" ".join(str(p) for p in parts))
+        except Exception:
+            pass
+
     inputs: list[Path] = args.inputs
     missing = [p for p in inputs if not p.exists()]
     if missing:
-        for p in missing:
-            print(f"Input does not exist: {p}", file=sys.stderr)
+        message = "\n".join(f"Input does not exist: {p}" for p in missing)
+        if windowed:
+            _gui_message("Email PDF Extractor", message, error=True)
+        elif sys.stderr:
+            print(message, file=sys.stderr)
         return 2
 
     output_dir = args.output or default_output_for(inputs)
     max_bytes = int(args.max_mb * 1024 * 1024) if args.max_mb and args.max_mb > 0 else 0
 
-    print(f"Scanning for emails in: {', '.join(str(p) for p in inputs)}")
-    print(f"Saving PDFs to:         {output_dir}")
+    emit(f"Scanning for emails in: {', '.join(str(p) for p in inputs)}")
+    emit(f"Saving PDFs to:         {output_dir}")
     if args.dry_run:
-        print("(dry run -- no files will be written)")
-    print("")
+        emit("(dry run -- no files will be written)")
+    emit("")
 
     summary = run(
         inputs=inputs,
@@ -783,9 +871,34 @@ def main(argv: Optional[list[str]] = None) -> int:
         overwrite=args.overwrite,
         dry_run=args.dry_run,
         max_bytes=max_bytes,
+        log=emit,
     )
-    print_summary(summary, dry_run=args.dry_run)
+    print_summary(summary, dry_run=args.dry_run, log=emit)
+
+    if windowed:
+        try:
+            import tkinter as tk
+            from tkinter import messagebox
+            root = tk.Tk()
+            root.withdraw()
+            _show_done_dialog(messagebox, summary, str(output_dir))
+            root.destroy()
+        except Exception:
+            pass
     return 0 if not summary.errors else 1
+
+
+def _gui_message(title: str, body: str, error: bool = False) -> None:
+    """Show a simple dialog (used by the windowed .exe when there is no console)."""
+    try:
+        import tkinter as tk
+        from tkinter import messagebox
+        root = tk.Tk()
+        root.withdraw()
+        (messagebox.showerror if error else messagebox.showinfo)(title, body)
+        root.destroy()
+    except Exception:
+        pass
 
 
 if __name__ == "__main__":

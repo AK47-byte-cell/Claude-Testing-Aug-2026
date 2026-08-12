@@ -8,3 +8,8 @@ venv/
 # Tool output
 _Extracted_PDFs/
 extracted_pdfs/
+
+# PyInstaller build artifacts (the exe is published via GitHub Releases)
+build/
+dist/
+*.manifest

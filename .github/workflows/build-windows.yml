@@ -1,0 +1,59 @@
+name: Build Windows app
+
+# Builds the standalone EmailPDFExtractor.exe on a real Windows machine and
+# publishes it so you can download and double-click it -- no Python needed.
+
+on:
+  push:
+    branches:
+      - claude/extract-pdfs-email-files-8u1jxw
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller extract-msg tnefparse
+
+      - name: Sanity-check the program imports
+        run: python -c "import extract_pdfs; print('module import OK')"
+
+      - name: Build EmailPDFExtractor.exe
+        run: pyinstaller --clean --noconfirm EmailPDFExtractor.spec
+
+      - name: Upload the app as a build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: EmailPDFExtractor-windows
+          path: dist/EmailPDFExtractor.exe
+          if-no-files-found: error
+
+      - name: Publish a rolling "latest" release
+        if: github.event_name != 'pull_request'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Replace any previous "latest" so the download link always points
+          # at the newest build.
+          gh release delete latest --yes --cleanup-tag 2>/dev/null || echo "no existing 'latest' release"
+          gh release create latest dist/EmailPDFExtractor.exe \
+            --prerelease \
+            --title "Latest Windows build" \
+            --notes "Automatically built Windows app. Download **EmailPDFExtractor.exe** below and double-click it — no Python needed."

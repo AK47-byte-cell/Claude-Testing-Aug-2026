@@ -1,6 +1,6 @@
-# Extract PDFs from saved emails
+# Email PDF Extractor
 
-A small Windows tool that scans a folder of saved email files and pulls every
+A small Windows app that scans a folder of saved emails and pulls every
 **attached (or inline) PDF** out of them into a separate folder — so you don't
 have to open each email and "Save As" one attachment at a time.
 
@@ -9,42 +9,75 @@ It reads:
 - **`.eml`** files — the standard email format (Outlook, Thunderbird, Apple
   Mail, Gmail "Show original / Download message", most mail servers).
 - **`.msg`** files — Outlook's own format (what you get when you drag a message
-  out of Outlook, or use *File → Save As*). This needs one free add-on package;
-  see [Reading Outlook .msg files](#reading-outlook-msg-files) below.
+  out of Outlook, or use *File → Save As*). **Built into the app** — nothing
+  extra to install.
 
 Only PDFs are pulled out — Word documents, images, and other attachments are
 left alone.
 
 ---
 
-## Quick start (no command line)
+## Get the app (recommended)
 
-1. **Install Python** (one time). Download it from
-   <https://www.python.org/downloads/> and, on the first setup screen, tick
-   **"Add Python to PATH"**, then click *Install Now*.
-2. **Download this folder** to your PC (e.g. to your Desktop).
-3. **Double-click `Extract PDFs.bat`.**
-   A small window opens where you:
-   - choose the folder that holds your saved emails,
-   - choose where to save the extracted PDFs, and
-   - optionally tick *"Keep each email's PDFs in their own sub-folder"*
-     (on by default) so you can always tell which email each PDF came from.
+You do **not** need Python or a command line. A ready-made Windows program is
+built automatically.
 
-   Then click **Extract PDFs**. A progress bar runs while it works.
-4. When it finishes it tells you how many PDFs it saved and where, and lists
-   any files it had trouble with.
+1. Go to the **[Releases page](../../releases/latest)** and download
+   **`EmailPDFExtractor.exe`**
+   ([direct link](../../releases/latest/download/EmailPDFExtractor.exe)).
+2. Double-click it. The app window opens.
+3. Choose your emails folder, choose where to save the PDFs, and click
+   **Extract PDFs**.
 
-### Even quicker: drag and drop
+That's the whole thing — a single `.exe` you can keep on your Desktop or copy
+onto a USB stick. Windows SmartScreen may warn the first time because the app
+isn't code-signed; choose *More info → Run anyway*.
 
-Drag a **folder of emails** (or one or more email files) directly **onto
-`Extract PDFs.bat`**. The PDFs are written to a new `_Extracted_PDFs` folder
-right next to what you dropped.
+> The first build takes a few minutes after code is pushed. If the Releases
+> page is empty, the build is still running — check the repository's **Actions**
+> tab, or build it yourself (see [below](#build-the-app-yourself)).
 
 ---
 
-## Using it from a command prompt
+## Using the app
 
-Open a Command Prompt in this folder and run:
+The window has three things to set:
+
+1. **Emails folder** — the folder that holds your saved `.eml` / `.msg` files.
+2. **Save PDFs to** — where the extracted PDFs should go (it suggests an
+   `_Extracted_PDFs` folder for you).
+3. **Keep each email's PDFs in their own sub-folder** — on by default, so you
+   can always tell which email each PDF came from. Turn it off to put every PDF
+   in one flat folder.
+
+Click **Extract PDFs**. A progress bar runs, the results appear in the log,
+and when it's done you can click **Open output folder**. Sub-folders are
+searched automatically.
+
+---
+
+## Reading Outlook `.msg` files
+
+The downloaded `.exe` already handles `.msg` files (and `winmail.dat` / TNEF
+attachments) — nothing to install.
+
+You only need to install anything if you run the **Python script** directly
+(see below) *and* have `.msg` files; in that case:
+
+```bat
+pip install extract-msg
+```
+
+If a `.msg` file is met without that installed, the script simply skips it and
+tells you this command — your `.eml` files are still processed.
+
+---
+
+## Running from Python instead (optional)
+
+If you'd rather not use the `.exe`, the same program runs as a plain Python
+script (Python 3.8+). Double-click **`Extract PDFs.bat`** for the same window,
+drag a folder onto it, or use the command line:
 
 ```bat
 python extract_pdfs.py "C:\Path\To\Emails" -o "C:\Path\To\Save\PDFs"
@@ -72,12 +105,11 @@ python extract_pdfs.py message1.eml message2.msg -o "C:\PDFs"
 | --- | --- |
 | `-o`, `--output` | Folder to save PDFs into. Default: an `_Extracted_PDFs` folder next to the input. |
 | `-r`, `--recursive` | Also look inside sub-folders. |
-| `--group-by-email` | Put each email's PDFs in their own sub-folder (named after the email). Good for keeping track of which PDF came from which message. |
+| `--group-by-email` | Put each email's PDFs in their own sub-folder (named after the email). |
 | `--prefix-source` | Prefix each PDF's file name with the source email's name. |
 | `--overwrite` | Overwrite files that already exist instead of adding ` (1)`, ` (2)`, … |
 | `--max-mb` | Skip any single email file larger than this many MB (default `1024`; `0` = no limit). |
 | `--dry-run` | Show what would be extracted without writing anything. |
-| `--gui` | Force the point-and-click window even when you pass arguments. |
 
 Run `python extract_pdfs.py --help` to see them all.
 
@@ -99,7 +131,7 @@ so PDFs buried in a forward are extracted too.
 
 - Nothing is ever overwritten by default: if `scan.pdf` already exists, the
   next one is saved as `scan (1).pdf`, then `scan (2).pdf`, and so on.
-- Accented and non‑English file names (e.g. `Mise en demeure – Réponse.pdf`)
+- Accented and non-English file names (e.g. `Mise en demeure – Réponse.pdf`)
   are preserved.
 - Attachment names are cleaned of characters Windows doesn't allow, and any
   attempt by an attachment name to write outside your chosen output folder is
@@ -107,56 +139,48 @@ so PDFs buried in a forward are extracted too.
 
 ---
 
-## Reading Outlook `.msg` files
+## Build the app yourself
 
-`.eml` files work with a plain Python install. To also read Outlook `.msg`
-files, install one free package (one time). In a Command Prompt in this folder:
-
-```bat
-pip install extract-msg
-```
-
-Or install every optional extra at once (including support for `winmail.dat`
-attachments) with:
-
-```bat
-pip install -r requirements.txt
-```
-
-If you run the tool on `.msg` files without this installed, it simply skips
-them and reminds you of the command above — your `.eml` files are still
-processed.
+You normally don't need to — GitHub builds `EmailPDFExtractor.exe` for you (see
+[`.github/workflows/build-windows.yml`](.github/workflows/build-windows.yml)).
+But if you want to build it on your own Windows PC, with Python installed just
+double-click **`build_windows_exe.bat`**. It installs the build tools and
+produces `dist\EmailPDFExtractor.exe`.
 
 ---
 
 ## Troubleshooting
 
-- **"Python was not found."** Install Python from the link above and make sure
-  **"Add Python to PATH"** is ticked during setup, then try again.
-- **A graphical window doesn't appear.** Run it from a Command Prompt instead
-  (see [above](#using-it-from-a-command-prompt)). This can happen on stripped‑down
-  Python installs; the command-line mode always works.
-- **`.msg` files are skipped.** Install `extract-msg` (see the section above).
-- **Something went wrong with one email.** The tool keeps going and prints a
-  list of any files it couldn't read at the end, so one bad email never stops
-  the rest.
+- **Windows SmartScreen blocks it.** The app isn't code-signed. Click
+  *More info → Run anyway*. (It runs entirely on your computer; see the privacy
+  note below.)
+- **The Releases page has no file yet.** The automatic build is still running —
+  check the **Actions** tab, or build it yourself.
+- **Using the Python script and `.msg` files are skipped.** Install `extract-msg`
+  (`pip install extract-msg`). The downloaded `.exe` doesn't need this.
+- **Something went wrong with one email.** The app keeps going and lists any
+  files it couldn't read at the end, so one bad email never stops the rest.
 
 ---
 
-## What's in this folder
+## What's in this repository
 
 | File | Purpose |
 | --- | --- |
-| `extract_pdfs.py` | The program. |
-| `Extract PDFs.bat` | Double-click / drag-and-drop launcher for Windows. |
-| `requirements.txt` | Optional add-ons (`.msg` and `winmail.dat` support). |
-| `README.md` | This file. |
+| `extract_pdfs.py` | The program (GUI + command line). |
+| `Extract PDFs.bat` | Double-click / drag-and-drop launcher for the Python version. |
+| `EmailPDFExtractor.spec` | PyInstaller recipe that builds the `.exe`. |
+| `build_windows_exe.bat` | Build the `.exe` yourself on Windows. |
+| `.github/workflows/build-windows.yml` | Builds and publishes the `.exe` automatically. |
+| `app.ico` | The app's icon. |
+| `selftest.py` | Built-in checks (`python selftest.py`) that verify it works. |
+| `requirements.txt` | Optional add-ons for the Python version. |
 
 ---
 
 ## Note on confidential material
 
 Email attachments in a professional setting are frequently confidential or
-privileged. This tool runs **entirely on your own computer** — it does not send
+privileged. This app runs **entirely on your own computer** — it does not send
 anything over the internet. Keep the extracted PDFs somewhere consistent with
 your organisation's file-handling rules.
