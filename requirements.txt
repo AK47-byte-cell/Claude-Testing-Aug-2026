@@ -1,0 +1,13 @@
+# Extracting PDFs from .eml files needs NOTHING beyond a standard Python 3
+# install -- you can ignore this file entirely if you only have .eml files.
+#
+# Install the packages below only if you also need the extra formats noted.
+# From a command prompt in this folder run:  pip install -r requirements.txt
+
+# Read Outlook .msg files (the format Outlook uses when you drag an email to
+# a folder, or choose "Save As" on a message).
+extract-msg>=0.28
+
+# Pull PDFs out of winmail.dat (TNEF) attachments that some Outlook senders
+# produce. Optional -- only needed if you run into winmail.dat files.
+tnefparse>=1.4
