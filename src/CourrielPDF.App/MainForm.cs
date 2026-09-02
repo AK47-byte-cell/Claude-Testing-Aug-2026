@@ -94,11 +94,6 @@ namespace CourrielPDF.App
             _dropZone.Click += (s, e) => ChooseFiles();
             root.Controls.Add(_dropZone, 0, 0);
 
-            // The whole window accepts drops too, not only the dashed zone.
-            DragEnter += OnDragEnter;
-            DragOver += OnDragEnter;
-            DragLeave += (s, e) => _dropZone.Active = false;
-            DragDrop += OnDragDrop;
 
             var options = new GroupBox { Text = "Options", Dock = DockStyle.Fill, AutoSize = true, Margin = new Padding(0, 0, 0, 8), Padding = new Padding(10, 6, 10, 8) };
             var optLayout = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 2, RowCount = 2 };
@@ -160,6 +155,23 @@ namespace CourrielPDF.App
             bottom.Controls.Add(_status, 0, 0);
             bottom.Controls.Add(_progress, 1, 0);
             root.Controls.Add(bottom, 0, 4);
+
+            // The whole window accepts drops, not only the dashed zone.
+            WireDropTarget(this);
+        }
+
+        private void WireDropTarget(Control control)
+        {
+            if (control != _dropZone && !(control is TextBox) && !(control is ComboBox))
+            {
+                control.AllowDrop = true;
+                control.DragEnter += OnDragEnter;
+                control.DragOver += OnDragEnter;
+                control.DragLeave += (s, e) => _dropZone.Active = false;
+                control.DragDrop += OnDragDrop;
+            }
+            foreach (Control child in control.Controls)
+                WireDropTarget(child);
         }
 
         private static CheckBox MakeCheck(string text) => new CheckBox { Text = text, AutoSize = true, Margin = new Padding(0, 2, 18, 2) };
@@ -417,6 +429,11 @@ namespace CourrielPDF.App
                     catch (OperationCanceledException)
                     {
                         cancelled = true;
+                    }
+                    catch (Exception ex)
+                    {
+                        totalFailed++;
+                        AddLog("Conversion", "Erreur imprévue : " + ex.Message, true);
                     }
                     finally
                     {
