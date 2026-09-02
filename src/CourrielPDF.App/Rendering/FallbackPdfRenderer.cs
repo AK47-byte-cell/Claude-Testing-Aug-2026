@@ -17,7 +17,7 @@ namespace CourrielPDF.App.Rendering
         private IPdfRenderer? _secondary;
         private bool _primaryUnusable;
         private string? _primaryError;
-        private string _description = "aucun moteur";
+        private string _description = "WebView2 (avec Microsoft Edge en arrière-plan en secours)";
 
         public FallbackPdfRenderer(Func<IPdfRenderer?> primaryFactory, Func<IPdfRenderer> secondaryFactory, Action<string>? log)
         {
