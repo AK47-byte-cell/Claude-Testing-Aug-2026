@@ -89,11 +89,30 @@ jobs:
       - name: Collect artifacts
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
-          Copy-Item src/CourrielPDF.App/bin/Release/net48/CourrielPDF.exe artifacts/
-          Copy-Item src/CourrielPDF.App/bin/Release/net48/CourrielPDF.exe.config artifacts/
-          Compress-Archive -Path artifacts/CourrielPDF.exe, artifacts/CourrielPDF.exe.config -DestinationPath artifacts/CourrielPDF-portable.zip -Force
-          Get-ChildItem artifacts | Format-Table Name, Length
+          $ErrorActionPreference = 'Stop'
+          $bin = 'src/CourrielPDF.App/bin/Release/net48'
+          $stage = 'artifacts/CourrielPDF'
+          New-Item -ItemType Directory -Force -Path $stage, "$stage/x86", "$stage/arm64" | Out-Null
+          Copy-Item "$bin/CourrielPDF.exe", "$bin/CourrielPDF.exe.config", "$bin/WebView2Loader.dll" $stage/
+          Copy-Item "$bin/x86/WebView2Loader.dll" "$stage/x86/"
+          Copy-Item "$bin/arm64/WebView2Loader.dll" "$stage/arm64/"
+          $lisezMoi = @"
+          CourrielPDF - conversion de courriels en PDF par glisser-deposer
+          =================================================================
+
+          1. Gardez tous les fichiers de ce dossier ensemble (CourrielPDF.exe, CourrielPDF.exe.config,
+             WebView2Loader.dll et les sous-dossiers x86 et arm64).
+          2. Double-cliquez sur CourrielPDF.exe. Aucune installation, aucun droit d'administrateur.
+          3. Au premier lancement, si Windows affiche "Windows a protege votre ordinateur", cliquez
+             "Informations complementaires" puis "Executer quand meme" (l'application n'est pas signee).
+
+          WebView2Loader.dll est le chargeur officiel de Microsoft pour le composant Edge WebView2,
+          fourni tel quel (signe par Microsoft). Le bouton "Diagnostic..." de l'application decrit
+          l'environnement detecte en cas de difficulte.
+          "@
+          Set-Content -Path "$stage/LISEZ-MOI.txt" -Value $lisezMoi -Encoding UTF8
+          Compress-Archive -Path "$stage/*" -DestinationPath artifacts/CourrielPDF-portable.zip -Force
+          Get-ChildItem artifacts -Recurse | Select-Object FullName, Length | Format-Table -AutoSize
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -104,10 +123,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: CourrielPDF
-          path: |
-            artifacts/CourrielPDF.exe
-            artifacts/CourrielPDF.exe.config
-            artifacts/CourrielPDF-portable.zip
+          path: artifacts/CourrielPDF-portable.zip
 
       - name: Publish GitHub Release
         if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/claude/email-pdf-converter-app-vfebg5' || startsWith(github.ref, 'refs/tags/v'))
@@ -119,10 +135,11 @@ jobs:
           $notes = @"
           Version portable de CourrielPDF (aucune installation requise).
 
-          1. Téléchargez **CourrielPDF.exe** ci-dessous.
-          2. Double-cliquez pour lancer. Si Windows affiche « Windows a protégé votre ordinateur », cliquez **Informations complémentaires** puis **Exécuter quand même** (l'application n'est pas signée numériquement).
-          3. Glissez-déposez vos courriels (.msg, .eml, dossiers ou messages directement depuis Outlook) dans la fenêtre.
+          1. Téléchargez **CourrielPDF-portable.zip** ci-dessous et décompressez-le dans un dossier de votre choix.
+          2. Gardez ensemble les fichiers du dossier : CourrielPDF.exe, CourrielPDF.exe.config, WebView2Loader.dll (chargeur officiel Microsoft, signé) et les sous-dossiers x86 et arm64.
+          3. Double-cliquez sur CourrielPDF.exe. Si Windows affiche « Windows a protégé votre ordinateur », cliquez **Informations complémentaires** puis **Exécuter quand même** (l'application n'est pas signée numériquement).
+          4. Glissez-déposez vos courriels (.msg, .eml, dossiers ou messages directement depuis Outlook) dans la fenêtre.
 
           Version : $tag — commit ${{ github.sha }}
           "@
-          gh release create $tag artifacts/CourrielPDF.exe artifacts/CourrielPDF-portable.zip --target ${{ github.sha }} --title "CourrielPDF $tag" --notes $notes --latest
+          gh release create $tag artifacts/CourrielPDF-portable.zip --target ${{ github.sha }} --title "CourrielPDF $tag" --notes $notes --latest

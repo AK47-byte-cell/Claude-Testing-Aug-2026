@@ -13,7 +13,7 @@
     <GenerateBindingRedirectsOutputType>true</GenerateBindingRedirectsOutputType>
     <NeutralLanguage>fr-CA</NeutralLanguage>
     <FodyGenerateXsd>false</FodyGenerateXsd>
-    <!-- The native loader is embedded and extracted by WebView2Bootstrap; nothing must be copied next to the exe. -->
+    <!-- The loader files are copied explicitly below; the package must not add its own copies. -->
     <WebView2NeverCopyLoaderDllToOutputDirectory>true</WebView2NeverCopyLoaderDllToOutputDirectory>
     <DisableImplicitFrameworkReferences>false</DisableImplicitFrameworkReferences>
   </PropertyGroup>
@@ -36,9 +36,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="$(PkgMicrosoft_Web_WebView2)\runtimes\win-x64\native\WebView2Loader.dll" LogicalName="CourrielPDF.App.WebView2Loader.x64.dll" Visible="false" />
-    <EmbeddedResource Include="$(PkgMicrosoft_Web_WebView2)\runtimes\win-x86\native\WebView2Loader.dll" LogicalName="CourrielPDF.App.WebView2Loader.x86.dll" Visible="false" />
-    <EmbeddedResource Include="$(PkgMicrosoft_Web_WebView2)\runtimes\win-arm64\native\WebView2Loader.dll" LogicalName="CourrielPDF.App.WebView2Loader.arm64.dll" Visible="false" />
+    <!-- Microsoft's signed native loader travels next to the exe, unmodified (x64 at the root, other CPUs in sub-folders). -->
+    <None Include="$(PkgMicrosoft_Web_WebView2)\runtimes\win-x64\native\WebView2Loader.dll" Link="WebView2Loader.dll" CopyToOutputDirectory="PreserveNewest" Visible="false" />
+    <None Include="$(PkgMicrosoft_Web_WebView2)\runtimes\win-x86\native\WebView2Loader.dll" Link="x86\WebView2Loader.dll" CopyToOutputDirectory="PreserveNewest" Visible="false" />
+    <None Include="$(PkgMicrosoft_Web_WebView2)\runtimes\win-arm64\native\WebView2Loader.dll" Link="arm64\WebView2Loader.dll" CopyToOutputDirectory="PreserveNewest" Visible="false" />
   </ItemGroup>
 
 </Project>

@@ -150,21 +150,11 @@ namespace CourrielPDF.Core.Rendering
         {
             try
             {
-                if (process.HasExited) return;
-                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                {
-                    try
-                    {
-                        using (var killer = Process.Start(new ProcessStartInfo("taskkill", "/PID " + process.Id + " /T /F") { CreateNoWindow = true, UseShellExecute = false }))
-                            killer?.WaitForExit(5000);
-                    }
-                    catch { }
-                }
                 if (!process.HasExited) process.Kill();
             }
             catch
             {
-                // best effort
+                // best effort: the browser's helper processes exit on their own once the main process is gone
             }
         }
 

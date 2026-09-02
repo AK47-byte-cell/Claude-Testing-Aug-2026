@@ -6,11 +6,14 @@ using Microsoft.Web.WebView2.Core;
 namespace CourrielPDF.App.Rendering
 {
     /// <summary>
-    /// The executable is a single file, so the native WebView2Loader.dll that the WebView2 SDK needs is carried as an
-    /// embedded resource, extracted once under %LOCALAPPDATA% and handed to the SDK through SetLoaderDllFolderPath.
+    /// The WebView2 SDK needs Microsoft's native WebView2Loader.dll. It is shipped, unmodified and Microsoft-signed,
+    /// as a plain file next to CourrielPDF.exe (with x86 and arm64 copies in sub-folders). Nothing is ever extracted
+    /// or written to disk at run time: antivirus heuristics treat programs that drop executable files as suspicious.
     /// </summary>
     internal static class WebView2Bootstrap
     {
+        public const string LoaderFileName = "WebView2Loader.dll";
+
         private static readonly object Sync = new object();
         private static bool _attempted;
         private static string? _error;
@@ -25,7 +28,21 @@ namespace CourrielPDF.App.Rendering
 
         public static string UserDataFolder => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CourrielPDF", "WebView2");
 
-        /// <summary>Extracts the loader for the current process architecture and registers it. Safe to call repeatedly.</summary>
+        public static string ProcessArchitectureName
+        {
+            get
+            {
+                switch (RuntimeInformation.ProcessArchitecture)
+                {
+                    case Architecture.X64: return "x64";
+                    case Architecture.X86: return "x86";
+                    case Architecture.Arm64: return "arm64";
+                    default: return RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant();
+                }
+            }
+        }
+
+        /// <summary>Locates the loader beside the executable and registers it with the SDK. Safe to call repeatedly.</summary>
         public static bool EnsureLoader()
         {
             lock (Sync)
@@ -34,44 +51,39 @@ namespace CourrielPDF.App.Rendering
                 _attempted = true;
                 try
                 {
-                    string arch;
-                    switch (RuntimeInformation.ProcessArchitecture)
+                    var baseDir = AppDomain.CurrentDomain.BaseDirectory ?? Directory.GetCurrentDirectory();
+                    var arch = ProcessArchitectureName;
+                    var candidates = new[]
                     {
-                        case Architecture.X64: arch = "x64"; break;
-                        case Architecture.X86: arch = "x86"; break;
-                        case Architecture.Arm64: arch = "arm64"; break;
-                        default: throw new PlatformNotSupportedException("Architecture de processeur non prise en charge : " + RuntimeInformation.ProcessArchitecture);
+                        Path.Combine(baseDir, arch, LoaderFileName),
+                        Path.Combine(baseDir, LoaderFileName),
+                        Path.Combine(baseDir, "runtimes", "win-" + arch, "native", LoaderFileName),
+                    };
+
+                    string? found = null;
+                    string? mismatch = null;
+                    foreach (var c in candidates)
+                    {
+                        if (!File.Exists(c)) continue;
+                        var machine = ReadPeMachine(c);
+                        if (machine == null || MachineMatches(machine.Value))
+                        {
+                            found = c;
+                            break;
+                        }
+                        mismatch = c + " (compilé pour " + MachineName(machine.Value) + ")";
                     }
 
-                    var resourceName = "CourrielPDF.App.WebView2Loader." + arch + ".dll";
-                    byte[] bytes;
-                    using (var stream = typeof(WebView2Bootstrap).Assembly.GetManifestResourceStream(resourceName))
+                    if (found == null)
                     {
-                        if (stream == null) throw new FileNotFoundException("Ressource intégrée introuvable : " + resourceName);
-                        using (var ms = new MemoryStream())
-                        {
-                            stream.CopyTo(ms);
-                            bytes = ms.ToArray();
-                        }
+                        _error = "Le fichier " + LoaderFileName + " est introuvable à côté de CourrielPDF.exe (dossier " + baseDir + "). "
+                                 + "Décompressez l'archive complète et gardez les fichiers ensemble."
+                                 + (mismatch != null ? " Fichier ignoré : " + mismatch + "." : string.Empty);
+                        return false;
                     }
 
-                    var folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CourrielPDF", "webview2-loader", SdkVersion, arch);
-                    Directory.CreateDirectory(folder);
-                    var target = Path.Combine(folder, "WebView2Loader.dll");
-                    if (!File.Exists(target) || new FileInfo(target).Length != bytes.LongLength)
-                    {
-                        try
-                        {
-                            File.WriteAllBytes(target, bytes);
-                        }
-                        catch (IOException) when (File.Exists(target))
-                        {
-                            // Another instance of the application holds the file; the existing copy will do.
-                        }
-                    }
-
-                    CoreWebView2Environment.SetLoaderDllFolderPath(folder);
-                    _loaderPath = target;
+                    CoreWebView2Environment.SetLoaderDllFolderPath(Path.GetDirectoryName(found)!);
+                    _loaderPath = found;
                     return true;
                 }
                 catch (Exception ex)
@@ -95,7 +107,7 @@ namespace CourrielPDF.App.Rendering
                 _runtimeChecked = true;
                 if (!EnsureLoader())
                 {
-                    _runtimeError = "Le chargeur WebView2 n'a pu être préparé : " + _error;
+                    _runtimeError = _error;
                     error = _runtimeError;
                     return null;
                 }
@@ -118,6 +130,53 @@ namespace CourrielPDF.App.Rendering
                 }
                 error = _runtimeError;
                 return _runtimeVersion;
+            }
+        }
+
+        // ---- PE header inspection: make sure the DLL matches the process architecture before loading it ----
+
+        private static ushort? ReadPeMachine(string path)
+        {
+            try
+            {
+                using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+                using (var br = new BinaryReader(fs))
+                {
+                    if (fs.Length < 0x40) return null;
+                    if (br.ReadUInt16() != 0x5A4D) return null; // "MZ"
+                    fs.Seek(0x3C, SeekOrigin.Begin);
+                    var peOffset = br.ReadInt32();
+                    if (peOffset <= 0 || peOffset + 6 > fs.Length) return null;
+                    fs.Seek(peOffset, SeekOrigin.Begin);
+                    if (br.ReadUInt32() != 0x00004550) return null; // "PE\0\0"
+                    return br.ReadUInt16();
+                }
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static bool MachineMatches(ushort machine)
+        {
+            switch (RuntimeInformation.ProcessArchitecture)
+            {
+                case Architecture.X64: return machine == 0x8664;
+                case Architecture.X86: return machine == 0x014C;
+                case Architecture.Arm64: return machine == 0xAA64;
+                default: return true;
+            }
+        }
+
+        private static string MachineName(ushort machine)
+        {
+            switch (machine)
+            {
+                case 0x8664: return "x64";
+                case 0x014C: return "x86";
+                case 0xAA64: return "arm64";
+                default: return "0x" + machine.ToString("X4");
             }
         }
     }

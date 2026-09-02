@@ -7,12 +7,21 @@ Elle fonctionne entièrement en local : aucun courriel ni aucune donnée ne quit
 
 ## Télécharger et lancer
 
-1. Ouvrez la page **Releases** du dépôt et téléchargez `CourrielPDF.exe` dans la version « CourrielPDF v0.1.x » la plus
-   récente. (La préversion « Latest Windows build », plus ancienne, appartient à un autre outil et n'est pas CourrielPDF.)
-2. Placez le fichier où vous voulez (Bureau, Documents, clé USB) et double-cliquez dessus. Aucune installation,
-   aucun droit d'administrateur.
+1. Ouvrez la page **Releases** du dépôt et téléchargez `CourrielPDF-portable.zip` dans la version « CourrielPDF v0.1.x »
+   la plus récente. (La préversion « Latest Windows build », plus ancienne, appartient à un autre outil et n'est pas
+   CourrielPDF.)
+2. Décompressez l'archive dans un dossier de votre choix (Bureau, Documents, clé USB) et gardez ses fichiers ensemble :
+   `CourrielPDF.exe`, `CourrielPDF.exe.config`, `WebView2Loader.dll` (chargeur officiel de Microsoft, signé et fourni tel
+   quel) et les sous-dossiers `x86` et `arm64`. Double-cliquez sur `CourrielPDF.exe`. Aucune installation, aucun droit
+   d'administrateur.
 3. Au premier lancement, Windows peut afficher « Windows a protégé votre ordinateur » parce que l'application
    n'est pas signée numériquement. Cliquez sur **Informations complémentaires**, puis **Exécuter quand même**.
+
+Antivirus : l'exécutable n'est pas signé numériquement et regroupe ses bibliothèques en un seul fichier, ce que
+certains antivirus signalent à tort comme suspect (« Wacatac », « Wacapew », « ML »…). L'application ne crée ni
+n'écrit aucun fichier exécutable au moment de l'exécution. En cas de blocage, le service informatique peut autoriser
+le fichier (ou son empreinte) ou, mieux, signer l'exécutable avec un certificat de signature de code du cabinet, ce qui
+supprime aussi l'avertissement de Windows.
 
 Prérequis : Windows 10 ou 11 (64 bits). Le rendu des courriels est confié au composant **Microsoft Edge WebView2**,
 livré avec Windows 11 et avec Microsoft 365, qui tourne à l'intérieur de l'application sans accès réseau. S'il est
