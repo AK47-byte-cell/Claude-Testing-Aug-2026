@@ -1,0 +1,97 @@
+name: Build
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  tests-linux:
+    name: Tests (Linux, Google Chrome)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore CourrielPDF.sln
+
+      - name: Build
+        run: dotnet build CourrielPDF.sln -c Release --no-restore
+
+      - name: Test (conversions rendered with Google Chrome)
+        run: dotnet test tests/CourrielPDF.Core.Tests/CourrielPDF.Core.Tests.csproj -c Release --no-build --logger "trx;LogFileName=tests-linux.trx" --results-directory TestResults
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-linux
+          path: TestResults
+
+  build-windows:
+    name: Build CourrielPDF.exe (Windows, Microsoft Edge)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore CourrielPDF.sln
+
+      - name: Build
+        run: dotnet build CourrielPDF.sln -c Release --no-restore
+
+      - name: Test (conversions rendered with Microsoft Edge)
+        run: dotnet test tests/CourrielPDF.Core.Tests/CourrielPDF.Core.Tests.csproj -c Release --no-build --logger "trx;LogFileName=tests-windows.trx" --results-directory TestResults
+
+      - name: Collect artifacts
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          Copy-Item src/CourrielPDF.App/bin/Release/net48/CourrielPDF.exe artifacts/
+          Copy-Item src/CourrielPDF.App/bin/Release/net48/CourrielPDF.exe.config artifacts/
+          Compress-Archive -Path artifacts/CourrielPDF.exe, artifacts/CourrielPDF.exe.config -DestinationPath artifacts/CourrielPDF-portable.zip -Force
+          Get-ChildItem artifacts | Format-Table Name, Length
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-windows
+          path: TestResults
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CourrielPDF
+          path: |
+            artifacts/CourrielPDF.exe
+            artifacts/CourrielPDF.exe.config
+            artifacts/CourrielPDF-portable.zip
+
+      - name: Publish GitHub Release
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/claude/email-pdf-converter-app-vfebg5' || startsWith(github.ref, 'refs/tags/v'))
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = if ("${{ github.ref }}".StartsWith("refs/tags/")) { "${{ github.ref_name }}" } else { "v0.1.${{ github.run_number }}" }
+          $notes = @"
+          Version portable de CourrielPDF (aucune installation requise).
+
+          1. Téléchargez **CourrielPDF.exe** ci-dessous.
+          2. Double-cliquez pour lancer. Si Windows affiche « Windows a protégé votre ordinateur », cliquez **Informations complémentaires** puis **Exécuter quand même** (l'application n'est pas signée numériquement).
+          3. Glissez-déposez vos courriels (.msg, .eml, dossiers ou messages directement depuis Outlook) dans la fenêtre.
+
+          Version : $tag — commit ${{ github.sha }}
+          "@
+          gh release create $tag artifacts/CourrielPDF.exe artifacts/CourrielPDF-portable.zip --target ${{ github.sha }} --title "CourrielPDF $tag" --notes $notes --latest
