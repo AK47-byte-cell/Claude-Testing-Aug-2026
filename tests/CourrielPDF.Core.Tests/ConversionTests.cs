@@ -20,7 +20,7 @@ namespace CourrielPDF.Core.Tests
 
         private static int PageCount(string pdf)
         {
-            using (var d = PdfReader.Open(pdf, PdfDocumentOpenMode.InformationOnly))
+            using (var d = PdfReader.Open(pdf, PdfDocumentOpenMode.Import))
                 return d.PageCount;
         }
 
@@ -44,7 +44,7 @@ namespace CourrielPDF.Core.Tests
                 Assert.Equal(Path.Combine(_dir, "Courriel test - pièces jointes", "Notes.docx"), r.SavedAttachmentPaths[0]);
                 Assert.True(File.Exists(r.SavedAttachmentPaths[0]));
 
-                using (var doc = PdfReader.Open(r.OutputPdfPath!, PdfDocumentOpenMode.InformationOnly))
+                using (var doc = PdfReader.Open(r.OutputPdfPath!, PdfDocumentOpenMode.Import))
                 {
                     Assert.Equal(Fixtures.Subject, doc.Info.Title);
                     Assert.Contains("Jean Tremblay", doc.Info.Author);
@@ -151,6 +151,12 @@ namespace CourrielPDF.Core.Tests
             {
                 Environment.SetEnvironmentVariable("COURRIELPDF_BROWSER", null);
                 Environment.SetEnvironmentVariable("PATH", _dir);
+                if (CourrielPDF.Core.Rendering.BrowserLocator.Find(options.BrowserPath) != null)
+                {
+                    // A system-wide browser is installed (e.g. Edge found through the Windows registry):
+                    // the "no browser" path cannot be exercised on this machine.
+                    return;
+                }
                 using (var service = new ConversionService(options))
                 {
                     var r = service.ConvertFile(source);
