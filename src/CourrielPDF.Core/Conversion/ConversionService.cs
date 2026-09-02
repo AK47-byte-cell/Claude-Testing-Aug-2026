@@ -26,7 +26,7 @@ namespace CourrielPDF.Core.Conversion
 
         private readonly ConversionOptions _options;
         private readonly string _workRoot;
-        private ChromiumPdfRenderer? _renderer;
+        private IPdfRenderer? _renderer;
         private string? _browserPath;
         private bool _disposed;
 
@@ -48,20 +48,38 @@ namespace CourrielPDF.Core.Conversion
             return _browserPath;
         }
 
-        private ChromiumPdfRenderer Renderer
+        private IPdfRenderer Renderer
         {
             get
             {
                 if (_renderer == null)
                 {
-                    _renderer = new ChromiumPdfRenderer(ResolveBrowserPath(), _workRoot)
+                    if (_options.RendererFactory != null)
                     {
-                        Timeout = _options.RenderTimeout,
-                        AllowNetwork = _options.AllowRemoteImages,
-                    };
+                        _renderer = _options.RendererFactory() ?? throw new PdfRenderException("Aucun moteur de rendu n'a été fourni.");
+                    }
+                    else
+                    {
+                        _renderer = new ChromiumPdfRenderer(ResolveBrowserPath(), _workRoot)
+                        {
+                            Timeout = _options.RenderTimeout,
+                            AllowNetwork = _options.AllowRemoteImages,
+                        };
+                    }
                 }
                 return _renderer;
             }
+        }
+
+        /// <summary>Makes sure a rendering engine is available before any output is written.</summary>
+        private void EnsureRendererAvailable()
+        {
+            if (_options.RendererFactory != null)
+            {
+                var _ = Renderer;
+                return;
+            }
+            ResolveBrowserPath();
         }
 
         /// <summary>Converts one .msg/.eml file. The PDF goes beside the file unless <paramref name="outputDirectory"/> is given.</summary>
@@ -113,7 +131,7 @@ namespace CourrielPDF.Core.Conversion
 
         private void ConvertCore(EmailMessage message, string sourceFileName, string outputDirectory, ConversionResult result, CancellationToken ct)
         {
-            ResolveBrowserPath();
+            EnsureRendererAvailable();
             Directory.CreateDirectory(outputDirectory);
             var baseName = OutputNaming.BuildBaseName(message, _options.Naming, sourceFileName);
             var pdfPath = OutputNaming.MakeUniquePath(outputDirectory, baseName, ".pdf");
@@ -231,8 +249,10 @@ namespace CourrielPDF.Core.Conversion
                 File.WriteAllText(htmlPath, html, new UTF8Encoding(false));
 
                 var bodyPdf = Path.Combine(workDir, "corps.pdf");
-                Log("Rendu du courriel avec " + Path.GetFileName(ResolveBrowserPath()));
-                Renderer.RenderFile(htmlPath, bodyPdf, ct);
+                var renderer = Renderer;
+                Log("Rendu du courriel avec " + renderer.Description);
+                renderer.RenderFile(htmlPath, bodyPdf, ct);
+                result.Engine = renderer.Description;
 
                 foreach (var a in toSave)
                 {

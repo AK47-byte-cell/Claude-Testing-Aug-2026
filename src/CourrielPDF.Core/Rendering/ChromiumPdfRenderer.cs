@@ -11,7 +11,7 @@ namespace CourrielPDF.Core.Rendering
     /// Prints an HTML file to PDF using a headless Chromium browser (Microsoft Edge on Windows).
     /// The browser runs with a throw-away profile so the user's normal Edge session is never touched.
     /// </summary>
-    public sealed class ChromiumPdfRenderer : IDisposable
+    public sealed class ChromiumPdfRenderer : IPdfRenderer
     {
         private readonly string _profileDirectory;
         private bool _disposed;
@@ -28,6 +28,17 @@ namespace CourrielPDF.Core.Rendering
 
         public string BrowserPath { get; }
         public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(90);
+
+        public string Description => Path.GetFileName(BrowserPath) + " en arrière-plan (mode headless)";
+
+        /// <summary>Exit code of the last browser process, when it exited on its own.</summary>
+        public int? LastExitCode { get; private set; }
+
+        /// <summary>Wall-clock time of the last browser run.</summary>
+        public TimeSpan LastElapsed { get; private set; }
+
+        /// <summary>Full command line of the last browser run (for diagnostics).</summary>
+        public string LastCommandLine { get; private set; } = string.Empty;
 
         /// <summary>When false, all network access is disabled inside the browser (DNS resolution fails fast).</summary>
         public bool AllowNetwork { get; set; }
@@ -56,6 +67,9 @@ namespace CourrielPDF.Core.Rendering
                 WorkingDirectory = _profileDirectory,
             };
 
+            LastCommandLine = "\"" + BrowserPath + "\" " + args;
+            LastExitCode = null;
+            var started = DateTime.UtcNow;
             var stderr = new StringBuilder();
             using (var process = new Process { StartInfo = psi })
             {
@@ -85,12 +99,21 @@ namespace CourrielPDF.Core.Rendering
                 }
                 process.WaitForExit();
                 LastStandardError = stderr.ToString();
+                try { LastExitCode = process.ExitCode; } catch { LastExitCode = null; }
             }
+            LastElapsed = DateTime.UtcNow - started;
 
             if (!File.Exists(outputPdfPath) || new FileInfo(outputPdfPath).Length == 0)
             {
                 var tail = LastStandardError.Length > 1200 ? LastStandardError.Substring(LastStandardError.Length - 1200) : LastStandardError;
-                throw new PdfRenderException("Le navigateur n'a pas produit de fichier PDF." + (tail.Length > 0 ? " Détails : " + tail.Trim() : string.Empty));
+                var sb = new StringBuilder();
+                sb.Append("Le navigateur n'a pas produit de fichier PDF (").Append(Path.GetFileName(BrowserPath));
+                if (LastExitCode.HasValue) sb.Append(", code de sortie ").Append(LastExitCode.Value);
+                sb.Append(", ").Append(LastElapsed.TotalSeconds.ToString("0.0", System.Globalization.CultureInfo.GetCultureInfo("fr-CA"))).Append(" s).");
+                if (LastElapsed < TimeSpan.FromSeconds(3) && (LastExitCode ?? 0) == 0 && tail.Trim().Length == 0)
+                    sb.Append(" Edge a rendu la main presque immédiatement sans imprimer : c'est ce qui se produit lorsqu'Edge est déjà ouvert et qu'une stratégie d'entreprise lui impose son profil utilisateur. Le moteur WebView2 intégré de l'application évite ce problème.");
+                if (tail.Trim().Length > 0) sb.Append(" Détails : ").Append(tail.Trim());
+                throw new PdfRenderException(sb.ToString());
             }
         }
 
@@ -104,6 +127,7 @@ namespace CourrielPDF.Core.Rendering
             sb.Append("--disable-breakpad --disable-crash-reporter --mute-audio --hide-scrollbars ");
             sb.Append("--disable-features=Translate,OptimizationHints,MediaRouter,msEdgeShoppingAssistant,msImplicitSignin ");
             sb.Append("--run-all-compositor-stages-before-draw ");
+            sb.Append("--enable-logging=stderr --log-level=1 ");
             sb.Append("--virtual-time-budget=15000 ");
             sb.Append("--no-pdf-header-footer --print-to-pdf-no-header ");
             if (!AllowNetwork)

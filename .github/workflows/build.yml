@@ -55,6 +55,37 @@ jobs:
       - name: Test (conversions rendered with Microsoft Edge)
         run: dotnet test tests/CourrielPDF.Core.Tests/CourrielPDF.Core.Tests.csproj -c Release --no-build --logger "trx;LogFileName=tests-windows.trx" --results-directory TestResults
 
+      - name: Self-test of CourrielPDF.exe with the WebView2 engine
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $clientKey = '{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
+          $version = $null
+          foreach ($k in @("HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\$clientKey", "HKLM:\SOFTWARE\Microsoft\EdgeUpdate\Clients\$clientKey")) {
+            $v = (Get-ItemProperty -Path $k -ErrorAction SilentlyContinue).pv
+            if ($v) { $version = $v; break }
+          }
+          if (-not $version) {
+            Write-Host 'WebView2 Runtime absent: installing the Evergreen runtime'
+            $setup = Join-Path $env:RUNNER_TEMP 'MicrosoftEdgeWebview2Setup.exe'
+            Invoke-WebRequest -Uri 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile $setup
+            $install = Start-Process -FilePath $setup -ArgumentList '/silent','/install' -Wait -PassThru
+            Write-Host "Installer exit code: $($install.ExitCode)"
+          } else {
+            Write-Host "WebView2 Runtime $version already installed"
+          }
+          $fixtures = Join-Path $env:RUNNER_TEMP 'exemples'
+          dotnet run --project src/CourrielPDF.Cli -c Release --no-build -- exemples $fixtures
+          $out = Join-Path $env:RUNNER_TEMP 'autotest'
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+          $journal = Join-Path $out 'journal.txt'
+          $exe = (Resolve-Path 'src/CourrielPDF.App/bin/Release/net48/CourrielPDF.exe').Path
+          $run = Start-Process -FilePath $exe -ArgumentList @('--autotest', "`"$fixtures`"", "`"$out`"", "`"$journal`"") -Wait -PassThru
+          if (Test-Path $journal) { Get-Content $journal } else { Write-Host 'No journal was written' }
+          Get-ChildItem $out -Recurse | Select-Object FullName, Length | Format-Table -AutoSize
+          if ($run.ExitCode -ne 0) { throw "Self-test failed with exit code $($run.ExitCode)" }
+          if (-not (Select-String -Path $journal -Pattern 'moteur : WebView2' -Quiet)) { throw 'The WebView2 engine was not used by the self-test' }
+
       - name: Collect artifacts
         shell: pwsh
         run: |

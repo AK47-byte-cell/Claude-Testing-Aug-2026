@@ -14,8 +14,11 @@ Elle fonctionne entièrement en local : aucun courriel ni aucune donnée ne quit
 3. Au premier lancement, Windows peut afficher « Windows a protégé votre ordinateur » parce que l'application
    n'est pas signée numériquement. Cliquez sur **Informations complémentaires**, puis **Exécuter quand même**.
 
-Prérequis : Windows 10 ou 11 (64 bits) avec Microsoft Edge, présent par défaut. Edge sert uniquement de moteur
-de rendu, en arrière-plan et sans accès réseau; votre session Edge habituelle n'est pas touchée.
+Prérequis : Windows 10 ou 11 (64 bits). Le rendu des courriels est confié au composant **Microsoft Edge WebView2**,
+livré avec Windows 11 et avec Microsoft 365, qui tourne à l'intérieur de l'application sans accès réseau. S'il est
+absent, l'application lance à la place Microsoft Edge en arrière-plan. Votre session Edge habituelle n'est jamais
+touchée. Le bouton **Diagnostic…** affiche les moteurs détectés et les derniers problèmes; son contenu peut être
+copié et transmis en cas de difficulté.
 
 ## Utilisation
 

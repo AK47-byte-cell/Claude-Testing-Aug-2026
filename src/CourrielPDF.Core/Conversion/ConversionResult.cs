@@ -20,6 +20,9 @@ namespace CourrielPDF.Core.Conversion
         public string? Error { get; set; }
         public TimeSpan Duration { get; set; }
 
+        /// <summary>Rendering engine that produced the PDF, e.g. "WebView2 (Microsoft Edge 151)".</summary>
+        public string? Engine { get; set; }
+
         public bool Success => Error == null && OutputPdfPath != null;
     }
 }

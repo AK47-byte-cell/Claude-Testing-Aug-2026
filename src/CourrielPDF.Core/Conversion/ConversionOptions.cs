@@ -1,5 +1,6 @@
 using System;
 using CourrielPDF.Core.Naming;
+using CourrielPDF.Core.Rendering;
 
 namespace CourrielPDF.Core.Conversion
 {
@@ -30,6 +31,13 @@ namespace CourrielPDF.Core.Conversion
 
         /// <summary>Explicit path to msedge.exe/chrome.exe. When null the browser is auto-detected.</summary>
         public string? BrowserPath { get; set; }
+
+        /// <summary>
+        /// Supplies the rendering engine. When null, a headless Edge/Chromium process is used
+        /// (see <see cref="ChromiumPdfRenderer"/>). The desktop application injects its WebView2 renderer here.
+        /// The service owns and disposes the renderer it obtains.
+        /// </summary>
+        public Func<IPdfRenderer>? RendererFactory { get; set; }
 
         public TimeSpan RenderTimeout { get; set; } = TimeSpan.FromSeconds(90);
 

@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using CourrielPDF.App.Rendering;
 using CourrielPDF.Core;
 using CourrielPDF.Core.Conversion;
 using CourrielPDF.Core.Naming;
@@ -35,6 +36,8 @@ namespace CourrielPDF.App
         private CancellationTokenSource? _cts;
         private bool _busy;
         private string? _browserPath;
+        private string? _webView2Version;
+        private readonly List<string> _recentProblems = new List<string>();
 
         private DropZonePanel _dropZone = null!;
         private ComboBox _namingCombo = null!;
@@ -50,6 +53,7 @@ namespace CourrielPDF.App
         private Button _btnOutlook = null!;
         private Button _btnCancel = null!;
         private Button _btnClear = null!;
+        private Button _btnDiagnostics = null!;
         private ListView _log = null!;
         private ProgressBar _progress = null!;
         private Label _status = null!;
@@ -132,7 +136,8 @@ namespace CourrielPDF.App
             _btnCancel = MakeButton("Annuler", (s, e) => _cts?.Cancel());
             _btnCancel.Enabled = false;
             _btnClear = MakeButton("Vider la liste", (s, e) => _log.Items.Clear());
-            actions.Controls.AddRange(new Control[] { _btnFiles, _btnOutlook, _btnCancel, _btnClear });
+            _btnDiagnostics = MakeButton("Diagnostic…", (s, e) => { using (var d = new DiagnosticsForm(_recentProblems)) d.ShowDialog(this); });
+            actions.Controls.AddRange(new Control[] { _btnFiles, _btnOutlook, _btnCancel, _btnClear, _btnDiagnostics });
             root.Controls.Add(actions, 0, 2);
 
             _log = new ListView { Dock = DockStyle.Fill, View = View.Details, FullRowSelect = true, GridLines = false, HideSelection = false, Margin = new Padding(0, 0, 0, 8) };
@@ -228,16 +233,32 @@ namespace CourrielPDF.App
         private void DetectBrowser()
         {
             _browserPath = BrowserLocator.Find();
-            if (_browserPath == null)
+            _webView2Version = WebView2Bootstrap.GetRuntimeVersion(out var webView2Error);
+
+            if (_webView2Version != null)
             {
-                _status.ForeColor = Color.Firebrick;
-                _status.Text = "Microsoft Edge est introuvable : la conversion ne pourra pas fonctionner.";
-                AddLog("Configuration", "Microsoft Edge (ou Google Chrome) est introuvable sur cet ordinateur. Installez Microsoft Edge pour permettre la conversion.", true);
+                _status.Text = "Prêt. Moteur de rendu : WebView2 (Microsoft Edge " + _webView2Version + ")" + (_browserPath != null ? ", avec Edge en arrière-plan en secours." : ".");
+            }
+            else if (_browserPath != null)
+            {
+                _status.Text = "Prêt. Moteur de rendu : Microsoft Edge en arrière-plan (WebView2 indisponible).";
+                AddLog("Configuration", "Le composant WebView2 n'est pas utilisable (" + webView2Error + "). Microsoft Edge sera lancé en arrière-plan à la place.", true, Color.FromArgb(150, 90, 0));
             }
             else
             {
-                _status.Text = "Prêt. Rendu des courriels avec " + Path.GetFileName(_browserPath) + ".";
+                _status.ForeColor = Color.Firebrick;
+                _status.Text = "Aucun moteur de rendu : la conversion ne pourra pas fonctionner.";
+                AddLog("Configuration", "Ni le composant WebView2 (" + webView2Error + ") ni Microsoft Edge ne sont disponibles sur cet ordinateur. Installez Microsoft Edge pour permettre la conversion.", true);
             }
+        }
+
+        private IPdfRenderer CreateRenderer(ConversionOptions options)
+        {
+            var host = this;
+            return new FallbackPdfRenderer(
+                () => _webView2Version != null ? new WebView2PdfRenderer(host, options.AllowRemoteImages) { Timeout = options.RenderTimeout } : null,
+                () => new ChromiumPdfRenderer(BrowserLocator.Find(_browserPath) ?? throw new BrowserNotFoundException()) { Timeout = options.RenderTimeout, AllowNetwork = options.AllowRemoteImages },
+                message => AddLog("Moteur", message, true, Color.FromArgb(150, 90, 0)));
         }
 
         // ------------------------------------------------------------------
@@ -396,6 +417,7 @@ namespace CourrielPDF.App
                     SaveSettings();
                     var options = _settings.ToConversionOptions();
                     options.BrowserPath = _browserPath;
+                    options.RendererFactory = () => CreateRenderer(options);
 
                     _progress.Visible = true;
                     _progress.Minimum = 0;
@@ -482,6 +504,7 @@ namespace CourrielPDF.App
                 var text = "PDF créé : " + Path.GetFileName(r.OutputPdfPath) + " (" + r.PageCount + (r.PageCount == 1 ? " page" : " pages") + ")";
                 if (r.AppendedAttachments.Count > 0) text += " · " + r.AppendedAttachments.Count + " pièce(s) jointe(s) fusionnée(s)";
                 if (r.SavedAttachmentPaths.Count > 0) text += " · " + r.SavedAttachmentPaths.Count + " pièce(s) jointe(s) enregistrée(s) dans un sous-dossier";
+                if (!string.IsNullOrEmpty(r.Engine)) text += " · " + r.Engine;
                 var item = AddLog(source, text, false);
                 item.Tag = r.OutputPdfPath;
             }
@@ -495,8 +518,19 @@ namespace CourrielPDF.App
 
         private ListViewItem AddLog(string source, string text, bool isProblem, Color? color = null)
         {
+            if (InvokeRequired)
+            {
+                ListViewItem? created = null;
+                Invoke(new Action(() => created = AddLog(source, text, isProblem, color)));
+                return created!;
+            }
             var item = new ListViewItem(new[] { source, text });
-            if (isProblem) item.ForeColor = color ?? Color.Firebrick;
+            if (isProblem)
+            {
+                item.ForeColor = color ?? Color.Firebrick;
+                _recentProblems.Add(source + " — " + text);
+                if (_recentProblems.Count > 20) _recentProblems.RemoveAt(0);
+            }
             _log.Items.Add(item);
             item.EnsureVisible();
             return item;

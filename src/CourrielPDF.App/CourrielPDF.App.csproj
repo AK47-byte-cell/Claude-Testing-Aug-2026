@@ -13,6 +13,8 @@
     <GenerateBindingRedirectsOutputType>true</GenerateBindingRedirectsOutputType>
     <NeutralLanguage>fr-CA</NeutralLanguage>
     <FodyGenerateXsd>false</FodyGenerateXsd>
+    <!-- The native loader is embedded and extracted by WebView2Bootstrap; nothing must be copied next to the exe. -->
+    <WebView2NeverCopyLoaderDllToOutputDirectory>true</WebView2NeverCopyLoaderDllToOutputDirectory>
     <DisableImplicitFrameworkReferences>false</DisableImplicitFrameworkReferences>
   </PropertyGroup>
 
@@ -28,8 +30,15 @@
   <ItemGroup>
     <ProjectReference Include="..\CourrielPDF.Core\CourrielPDF.Core.csproj" />
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4191.47" GeneratePathProperty="true" />
     <PackageReference Include="Costura.Fody" Version="6.2.0" PrivateAssets="all" />
     <PackageReference Include="Fody" Version="6.9.3" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="$(PkgMicrosoft_Web_WebView2)\runtimes\win-x64\native\WebView2Loader.dll" LogicalName="CourrielPDF.App.WebView2Loader.x64.dll" Visible="false" />
+    <EmbeddedResource Include="$(PkgMicrosoft_Web_WebView2)\runtimes\win-x86\native\WebView2Loader.dll" LogicalName="CourrielPDF.App.WebView2Loader.x86.dll" Visible="false" />
+    <EmbeddedResource Include="$(PkgMicrosoft_Web_WebView2)\runtimes\win-arm64\native\WebView2Loader.dll" LogicalName="CourrielPDF.App.WebView2Loader.arm64.dll" Visible="false" />
   </ItemGroup>
 
 </Project>

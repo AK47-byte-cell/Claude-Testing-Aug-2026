@@ -14,6 +14,9 @@ namespace CourrielPDF.Cli
         private static int Main(string[] args)
         {
             Console.OutputEncoding = System.Text.Encoding.UTF8;
+            if (args.Length >= 2 && string.Equals(args[0], "exemples", StringComparison.OrdinalIgnoreCase))
+                return Exemples.Generate(args[1]);
+
             var options = new ConversionOptions();
             string? outputDir = null;
             var verbose = false;

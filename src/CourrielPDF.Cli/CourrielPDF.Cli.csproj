@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\CourrielPDF.Core\CourrielPDF.Core.csproj" />
+    <PackageReference Include="MsgKit" Version="3.0.5" />
   </ItemGroup>
 
 </Project>
