@@ -63,7 +63,7 @@ namespace CourrielPDF.Core.Reading
                     var embedded = mp.Message;
                     var name = mp.ContentDisposition?.FileName ?? string.Empty;
                     if (string.IsNullOrWhiteSpace(name))
-                        name = (embedded == null || string.IsNullOrWhiteSpace(embedded.Subject) ? "Courriel joint" : embedded.Subject.Trim()) + ".eml";
+                        name = (embedded == null || string.IsNullOrWhiteSpace(embedded.Subject) ? "Courriel joint" : embedded.Subject!.Trim()) + ".eml";
                     else if (!name.EndsWith(".eml", StringComparison.OrdinalIgnoreCase) && !name.EndsWith(".msg", StringComparison.OrdinalIgnoreCase))
                         name += ".eml";
                     byte[] raw = Array.Empty<byte>();

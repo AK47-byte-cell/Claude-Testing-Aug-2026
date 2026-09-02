@@ -7,7 +7,8 @@ Elle fonctionne entièrement en local : aucun courriel ni aucune donnée ne quit
 
 ## Télécharger et lancer
 
-1. Ouvrez la page **Releases** du dépôt et téléchargez `CourrielPDF.exe` (version la plus récente).
+1. Ouvrez la page **Releases** du dépôt et téléchargez `CourrielPDF.exe` dans la version « CourrielPDF v0.1.x » la plus
+   récente. (La préversion « Latest Windows build », plus ancienne, appartient à un autre outil et n'est pas CourrielPDF.)
 2. Placez le fichier où vous voulez (Bureau, Documents, clé USB) et double-cliquez dessus. Aucune installation,
    aucun droit d'administrateur.
 3. Au premier lancement, Windows peut afficher « Windows a protégé votre ordinateur » parce que l'application
