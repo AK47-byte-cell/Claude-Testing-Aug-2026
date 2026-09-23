@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -12,22 +13,25 @@ using CourrielPDF.Core.Rendering;
 namespace CourrielPDF.App
 {
     /// <summary>
-    /// Unattended self-test used by the build pipeline: converts the given file or folder with the same engines as the
+    /// Unattended self-test used by the build pipeline: processes the given file or folder with the same engines as the
     /// interactive window (WebView2 first, headless Edge second), writes a journal and exits with 0 on success.
-    /// Invoked as: CourrielPDF.exe --autotest &lt;fichier ou dossier&gt; &lt;dossier de sortie&gt; [journal.txt]
+    /// Invoked as: CourrielPDF.exe --autotest &lt;fichier ou dossier&gt; &lt;dossier de sortie&gt; [journal.txt] [pj]
+    /// The optional "pj" switches to attachments-only mode.
     /// </summary>
     internal sealed class AutoTestForm : Form
     {
         private readonly string _input;
         private readonly string _outputDir;
         private readonly string? _journalPath;
+        private readonly bool _attachmentsOnly;
         private readonly StringBuilder _journal = new StringBuilder();
 
-        public AutoTestForm(string input, string outputDir, string? journalPath)
+        public AutoTestForm(string input, string outputDir, string? journalPath, bool attachmentsOnly)
         {
             _input = input;
             _outputDir = outputDir;
             _journalPath = journalPath;
+            _attachmentsOnly = attachmentsOnly;
             Text = "CourrielPDF — autotest";
             ShowInTaskbar = false;
             Opacity = 0;
@@ -47,7 +51,7 @@ namespace CourrielPDF.App
             var exitCode = 0;
             try
             {
-                Log("CourrielPDF autotest — " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+                Log("CourrielPDF autotest — " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + (_attachmentsOnly ? " — mode pièces jointes seulement" : string.Empty));
                 var runtime = WebView2Bootstrap.GetRuntimeVersion(out var runtimeError);
                 Log("WebView2 Runtime : " + (runtime ?? "indisponible — " + runtimeError));
                 Log("Edge : " + (BrowserLocator.Find() ?? "introuvable"));
@@ -69,20 +73,26 @@ namespace CourrielPDF.App
                     options.Log = m => Log("  · " + m);
 
                     var outputDir = _outputDir;
+                    var attachmentsOnly = _attachmentsOnly;
                     var results = await Task.Run(() =>
                     {
                         var list = new List<ConversionResult>();
                         using (var service = new ConversionService(options))
                         {
                             foreach (var f in files)
-                                list.Add(service.ConvertFile(f, outputDir));
+                                list.Add(attachmentsOnly ? service.ExtractAttachments(f, outputDir) : service.ConvertFile(f, outputDir));
                         }
                         return list;
                     }).ConfigureAwait(true);
 
                     foreach (var r in results)
                     {
-                        if (r.Success)
+                        if (r.Success && r.Mode == ConversionMode.AttachmentsOnly)
+                        {
+                            Log("OK      " + r.Source + " : " + r.SavedAttachmentPaths.Count + " pièce(s) jointe(s) enregistrée(s)" + (r.SkippedInlineImages > 0 ? ", " + r.SkippedInlineImages + " image(s) intégrée(s) ignorée(s)" : string.Empty));
+                            foreach (var p in r.SavedAttachmentPaths) Log("        + " + p);
+                        }
+                        else if (r.Success)
                         {
                             Log("OK      " + r.OutputPdfPath + " (" + r.PageCount + " pages) — moteur : " + r.Engine);
                         }

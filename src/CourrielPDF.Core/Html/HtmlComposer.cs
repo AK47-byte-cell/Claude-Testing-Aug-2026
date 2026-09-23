@@ -421,31 +421,15 @@ namespace CourrielPDF.Core.Html
             var mime = ImageMimeFromMagic(a.Data) ?? (a.IsImage ? a.EffectiveMimeType : null);
             if (mime == null || mime == "image/tiff" || mime.Contains("emf") || mime.Contains("wmf"))
             {
-                // Not something a browser can draw; treat as consumed but invisible.
-                prepared.InlinedAttachments.Add(a);
-                prepared.Warnings.Add("Image de type non pris en charge : " + a.FileName);
+                // The browser cannot draw this; leave it to the attachment handling instead of swallowing it.
+                prepared.Warnings.Add("Image intégrée non affichable (" + a.FileName + ") : traitée comme pièce jointe.");
                 return TransparentGif;
             }
             prepared.InlinedAttachments.Add(a);
             return "data:" + mime + ";base64," + Convert.ToBase64String(a.Data);
         }
 
-        internal static string? ImageMimeFromMagic(byte[] d)
-        {
-            if (d == null || d.Length < 12) return null;
-            if (d[0] == 0x89 && d[1] == 0x50 && d[2] == 0x4E && d[3] == 0x47) return "image/png";
-            if (d[0] == 0xFF && d[1] == 0xD8 && d[2] == 0xFF) return "image/jpeg";
-            if (d[0] == (byte)'G' && d[1] == (byte)'I' && d[2] == (byte)'F' && d[3] == (byte)'8') return "image/gif";
-            if (d[0] == (byte)'B' && d[1] == (byte)'M') return "image/bmp";
-            if (d[0] == (byte)'R' && d[1] == (byte)'I' && d[2] == (byte)'F' && d[3] == (byte)'F' && d[8] == (byte)'W' && d[9] == (byte)'E' && d[10] == (byte)'B' && d[11] == (byte)'P') return "image/webp";
-            if ((d[0] == 0x49 && d[1] == 0x49 && d[2] == 0x2A && d[3] == 0x00) || (d[0] == 0x4D && d[1] == 0x4D && d[2] == 0x00 && d[3] == 0x2A)) return "image/tiff";
-            if (d[0] == (byte)'<')
-            {
-                var head = Encoding.ASCII.GetString(d, 0, Math.Min(d.Length, 512)).ToLowerInvariant();
-                if (head.Contains("<svg")) return "image/svg+xml";
-            }
-            return null;
-        }
+        internal static string? ImageMimeFromMagic(byte[] d) => ImageSniffer.DetectMimeType(d);
 
         // ------------------------------------------------------------------
         // Body sources

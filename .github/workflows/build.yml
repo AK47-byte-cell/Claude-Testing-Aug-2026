@@ -55,7 +55,7 @@ jobs:
       - name: Test (conversions rendered with Microsoft Edge)
         run: dotnet test tests/CourrielPDF.Core.Tests/CourrielPDF.Core.Tests.csproj -c Release --no-build --logger "trx;LogFileName=tests-windows.trx" --results-directory TestResults
 
-      - name: Self-test of CourrielPDF.exe with the WebView2 engine
+      - name: Self-tests of CourrielPDF.exe (PDF with the WebView2 engine, then attachments-only)
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -85,6 +85,17 @@ jobs:
           Get-ChildItem $out -Recurse | Select-Object FullName, Length | Format-Table -AutoSize
           if ($run.ExitCode -ne 0) { throw "Self-test failed with exit code $($run.ExitCode)" }
           if (-not (Select-String -Path $journal -Pattern 'moteur : WebView2' -Quiet)) { throw 'The WebView2 engine was not used by the self-test' }
+          $outPj = Join-Path $env:RUNNER_TEMP 'autotest-pj'
+          New-Item -ItemType Directory -Force -Path $outPj | Out-Null
+          $journalPj = Join-Path $outPj 'journal.txt'
+          $runPj = Start-Process -FilePath $exe -ArgumentList @('--autotest', "`"$fixtures`"", "`"$outPj`"", "`"$journalPj`"", 'pj') -Wait -PassThru
+          if (Test-Path $journalPj) { Get-Content $journalPj } else { Write-Host 'No journal was written (attachments-only)' }
+          Get-ChildItem $outPj -Recurse | Select-Object FullName, Length | Format-Table -AutoSize
+          if ($runPj.ExitCode -ne 0) { throw "Attachments-only self-test failed with exit code $($runPj.ExitCode)" }
+          if (-not (Test-Path (Join-Path $outPj "Rapport d'expertise.pdf"))) { throw 'Attachments-only self-test did not save the PDF attachment' }
+          if (-not (Test-Path (Join-Path $outPj 'Notes.docx'))) { throw 'Attachments-only self-test did not save the Word attachment' }
+          if (Test-Path (Join-Path $outPj 'Exemple courriel.pdf')) { throw 'Attachments-only self-test must not convert the e-mail itself' }
+          if (Test-Path (Join-Path $outPj 'logo.png')) { throw 'Attachments-only self-test must skip the inline signature image' }
 
       - name: Collect artifacts
         shell: pwsh

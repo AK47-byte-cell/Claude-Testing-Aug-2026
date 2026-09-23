@@ -15,7 +15,8 @@ namespace CourrielPDF.App
             if (args.Length >= 3 && string.Equals(args[0], "--autotest", StringComparison.OrdinalIgnoreCase))
             {
                 // Unattended self-test used by the build pipeline.
-                Application.Run(new AutoTestForm(args[1], args[2], args.Length > 3 ? args[3] : null));
+                var attachmentsOnly = args.Length > 4 && string.Equals(args[4], "pj", StringComparison.OrdinalIgnoreCase);
+                Application.Run(new AutoTestForm(args[1], args[2], args.Length > 3 ? args[3] : null, attachmentsOnly));
                 return Environment.ExitCode;
             }
 

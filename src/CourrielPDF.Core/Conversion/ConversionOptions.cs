@@ -44,6 +44,17 @@ namespace CourrielPDF.Core.Conversion
         /// <summary>Optional diagnostic sink.</summary>
         public Action<string>? Log { get; set; }
 
+        // ---- Attachments-only mode ----
+
+        /// <summary>Also save the pictures that belong to the message body (signature logos, pasted images).</summary>
+        public bool AttachmentsIncludeInlineImages { get; set; }
+
+        /// <summary>Save forwarded e-mails found as attachments as .msg/.eml files.</summary>
+        public bool AttachmentsSaveForwardedMessages { get; set; } = true;
+
+        /// <summary>Also extract the attachments carried by forwarded e-mails.</summary>
+        public bool AttachmentsExtractForwardedMessages { get; set; } = true;
+
         public ConversionOptions Clone() => (ConversionOptions)MemberwiseClone();
     }
 }

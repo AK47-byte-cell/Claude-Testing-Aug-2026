@@ -45,6 +45,18 @@ puis cliquez sur le bouton.
 résultat (PDF créé, pièces jointes fusionnées ou enregistrées, avertissements, erreurs). Vous pouvez déposer
 d'autres courriels pendant une conversion, ils sont mis en file d'attente. Un double-clic sur une ligne ouvre le PDF.
 
+**Enregistrer seulement les pièces jointes.** Sous la zone de dépôt, le sélecteur « Que faire des courriels
+déposés ? » offre deux modes, mémorisés d'une session à l'autre. Dans le mode « Enregistrer seulement les pièces
+jointes », aucun PDF n'est créé : les pièces jointes de tous les courriels déposés sont enregistrées ensemble dans le
+**dossier de destination** indiqué (votre dossier Téléchargements par défaut; le bouton **Parcourir…** permet d'en
+choisir un autre, **Ouvrir** l'affiche). Les fichiers gardent leur nom d'origine; un numéro est ajouté en cas de
+doublon, rien n'est écrasé. Les courriels joints (messages transférés en pièce jointe) sont enregistrés tels quels en
+`.msg` ou `.eml` et leurs propres pièces jointes sont aussi extraites. Les logos de signature et petites images collées
+dans le texte sont ignorés; la case « Inclure aussi les images intégrées au texte » les fait enregistrer malgré tout.
+Une image affichée dans le texte n'est ignorée que si elle est petite (au plus 128 Ko et 800 pixels de côté), de sorte
+que les photographies insérées dans un message sont conservées. Les messages glissés depuis Outlook vont directement
+dans le dossier de destination, sans demander de dossier. Ce mode n'a besoin d'aucun moteur de rendu.
+
 ## Ce que contient le PDF
 
 Le PDF reproduit le courriel tel qu'il s'affiche dans Outlook (mise en forme, tableaux, couleurs, images intégrées,
@@ -73,6 +85,9 @@ toujours retirés.
 
 | Option | Effet |
 | --- | --- |
+| Que faire des courriels déposés ? | « Convertir en PDF » (défaut) ou « Enregistrer seulement les pièces jointes ». Les options ci-dessous changent selon le mode. |
+| Dossier de destination (pièces jointes seulement) | Où vont tous les fichiers extraits; Téléchargements par défaut. |
+| Inclure aussi les images intégrées au texte (pièces jointes seulement) | Enregistre aussi les logos de signature et images collées dans le texte. |
 | Nom des fichiers PDF | `Objet.msg → Objet.pdf` (défaut), `2026-09-02 14h35 - Objet.pdf`, ou `2026-09-02 14h35 - Expéditeur - Objet.pdf`. Un numéro est ajouté en cas de doublon, rien n'est écrasé. |
 | Joindre les pièces jointes PDF | Fusionne les PDF joints après le courriel. |
 | Enregistrer les autres pièces jointes | Crée le sous-dossier `… - pièces jointes`. |
@@ -97,8 +112,9 @@ Les options sont mémorisées d'une session à l'autre (`%APPDATA%\CourrielPDF\p
 
 ## Ligne de commande
 
-Un outil en ligne de commande (`courrielpdf`, .NET 8) offre les mêmes conversions pour les traitements par lots
-et les tests automatisés : `courrielpdf -o Dossier\Sortie -n date "C:\Courriels"`. Lancez `courrielpdf --help`
+Un outil en ligne de commande (`courrielpdf`, .NET 8) offre les mêmes traitements pour les lots et les tests
+automatisés : `courrielpdf -o Dossier\Sortie -n date "C:\Courriels"` convertit en PDF,
+`courrielpdf --pj -o Dossier\PJ "C:\Courriels"` enregistre seulement les pièces jointes. Lancez `courrielpdf --help`
 pour la liste des options.
 
 ## Compilation
@@ -128,7 +144,10 @@ CourrielPDF is a portable Windows application (single `CourrielPDF.exe`, no inst
 converts e-mails to PDF by drag and drop. Drop `.msg` or `.eml` files or whole folders: each e-mail becomes a PDF
 saved next to the source file. Drag messages straight from classic Outlook and the app asks for a destination
 folder. PDF attachments are merged after the message (with separator pages), forwarded e-mails are converted and
-appended, other attachments are saved in a `… - pièces jointes` folder beside the PDF. The header block is in
+appended, other attachments are saved in a `… - pièces jointes` folder beside the PDF. A second mode,
+"Enregistrer seulement les pièces jointes", creates no PDF and saves the attachments of every dropped e-mail into one
+destination folder (Downloads by default), skipping signature logos and saving forwarded e-mails as .msg/.eml files
+together with their own attachments. The header block is in
 French (De, Envoyé, À, Cc, Cci, Objet, Pièces jointes), pages are Letter size and numbered, and everything runs
 offline using the Microsoft Edge engine already present on Windows 10/11. Download `CourrielPDF.exe` from the
 Releases page; on first launch accept the SmartScreen prompt (the executable is not code-signed).

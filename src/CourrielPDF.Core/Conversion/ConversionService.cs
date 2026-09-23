@@ -16,8 +16,9 @@ using PdfSharp.Pdf.IO;
 namespace CourrielPDF.Core.Conversion
 {
     /// <summary>
-    /// Orchestrates one conversion: load the message, plan the attachments, compose and render the HTML,
-    /// merge the PDF attachments, save the other attachments, and write the final PDF.
+    /// Orchestrates the work on one e-mail. In PDF mode: load the message, plan the attachments, compose and render
+    /// the HTML, merge the PDF attachments, save the other attachments, and write the final PDF. In attachments-only
+    /// mode: load the message and write its attachments (and those of forwarded e-mails) into one folder.
     /// </summary>
     public sealed class ConversionService : IDisposable
     {
@@ -82,11 +83,15 @@ namespace CourrielPDF.Core.Conversion
             ResolveBrowserPath();
         }
 
+        // ------------------------------------------------------------------
+        // PDF mode
+        // ------------------------------------------------------------------
+
         /// <summary>Converts one .msg/.eml file. The PDF goes beside the file unless <paramref name="outputDirectory"/> is given.</summary>
         public ConversionResult ConvertFile(string sourcePath, string? outputDirectory = null, CancellationToken cancellationToken = default)
         {
             var sw = Stopwatch.StartNew();
-            var result = new ConversionResult(sourcePath);
+            var result = new ConversionResult(sourcePath) { Mode = ConversionMode.ConvertToPdf };
             try
             {
                 Log("Lecture de " + sourcePath);
@@ -96,6 +101,7 @@ namespace CourrielPDF.Core.Conversion
             }
             catch (OperationCanceledException)
             {
+                result.Cancelled = true;
                 result.Error = "Conversion annulée.";
             }
             catch (Exception ex)
@@ -111,13 +117,14 @@ namespace CourrielPDF.Core.Conversion
         public ConversionResult ConvertMessage(EmailMessage message, string displayName, string outputDirectory, CancellationToken cancellationToken = default)
         {
             var sw = Stopwatch.StartNew();
-            var result = new ConversionResult(displayName);
+            var result = new ConversionResult(displayName) { Mode = ConversionMode.ConvertToPdf };
             try
             {
                 ConvertCore(message, displayName, outputDirectory, result, cancellationToken);
             }
             catch (OperationCanceledException)
             {
+                result.Cancelled = true;
                 result.Error = "Conversion annulée.";
             }
             catch (Exception ex)
@@ -192,7 +199,7 @@ namespace CourrielPDF.Core.Conversion
                 foreach (var a in message.Attachments)
                 {
                     ct.ThrowIfCancellationRequested();
-                    if (IsInline(a, prepared)) continue;
+                    if (AttachmentClassifier.IsRenderedInBody(a, prepared)) continue;
 
                     if (a.EmbeddedMessage != null && _options.ConvertEmbeddedMessages && depth < MaxEmbeddedDepth)
                     {
@@ -283,13 +290,125 @@ namespace CourrielPDF.Core.Conversion
             }
         }
 
-        private static bool IsInline(EmailAttachment a, PreparedBody prepared)
+        // ------------------------------------------------------------------
+        // Attachments-only mode
+        // ------------------------------------------------------------------
+
+        /// <summary>
+        /// Saves the attachments of one .msg/.eml file into <paramref name="outputDirectory"/>, without creating any PDF.
+        /// Forwarded e-mails are saved as files and their own attachments extracted as well. No rendering engine is used.
+        /// </summary>
+        public ConversionResult ExtractAttachments(string sourcePath, string outputDirectory, CancellationToken cancellationToken = default)
         {
-            if (prepared.InlinedAttachments.Contains(a)) return true;
-            if (a.EmbeddedMessage != null) return false;
-            if (a.IsHidden && a.IsImage) return true;
-            return false;
+            var sw = Stopwatch.StartNew();
+            var result = new ConversionResult(sourcePath) { Mode = ConversionMode.AttachmentsOnly };
+            try
+            {
+                Log("Lecture de " + sourcePath);
+                var message = EmailLoader.Load(sourcePath);
+                ExtractCore(message, Path.GetFileName(sourcePath), outputDirectory, result, 0, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                result.Cancelled = true;
+                result.Error = "Extraction annulée.";
+            }
+            catch (Exception ex)
+            {
+                result.Error = Describe(ex);
+                Log(ex.ToString());
+            }
+            result.Duration = sw.Elapsed;
+            return result;
         }
+
+        /// <summary>Same as <see cref="ExtractAttachments(string,string,CancellationToken)"/> for an already loaded message.</summary>
+        public ConversionResult ExtractAttachments(EmailMessage message, string displayName, string outputDirectory, CancellationToken cancellationToken = default)
+        {
+            var sw = Stopwatch.StartNew();
+            var result = new ConversionResult(displayName) { Mode = ConversionMode.AttachmentsOnly };
+            try
+            {
+                ExtractCore(message, displayName, outputDirectory, result, 0, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                result.Cancelled = true;
+                result.Error = "Extraction annulée.";
+            }
+            catch (Exception ex)
+            {
+                result.Error = Describe(ex);
+                Log(ex.ToString());
+            }
+            result.Duration = sw.Elapsed;
+            return result;
+        }
+
+        private void ExtractCore(EmailMessage message, string sourceFileName, string outputDirectory, ConversionResult result, int depth, CancellationToken ct)
+        {
+            ct.ThrowIfCancellationRequested();
+            Directory.CreateDirectory(outputDirectory);
+
+            // The body is analysed only to learn which pictures it displays; nothing is rendered.
+            PreparedBody? prepared = null;
+            if (!_options.AttachmentsIncludeInlineImages)
+            {
+                try
+                {
+                    prepared = HtmlComposer.PrepareBody(message, new HtmlComposerOptions { AllowRemoteImages = true, IncludeProvenance = false });
+                }
+                catch (Exception ex)
+                {
+                    Log("Analyse du corps impossible (" + Shorten(ex.Message) + "); les images sont classées d'après leurs indicateurs seulement.");
+                }
+            }
+
+            foreach (var a in message.Attachments)
+            {
+                ct.ThrowIfCancellationRequested();
+
+                if (a.EmbeddedMessage != null)
+                {
+                    if (_options.AttachmentsSaveForwardedMessages)
+                    {
+                        if (a.Data.Length > 0)
+                        {
+                            var savedMessage = SaveAttachment(a, outputDirectory);
+                            result.SavedAttachmentPaths.Add(savedMessage);
+                            Log("Courriel joint enregistré : " + savedMessage);
+                        }
+                        else
+                        {
+                            result.Warnings.Add(Prefix(depth, sourceFileName, "Le courriel joint « " + a.FileName + " » n'a pu être enregistré tel quel; seules ses pièces jointes le sont."));
+                        }
+                    }
+                    if (_options.AttachmentsExtractForwardedMessages && depth < MaxEmbeddedDepth)
+                        ExtractCore(a.EmbeddedMessage, a.FileName, outputDirectory, result, depth + 1, ct);
+                    continue;
+                }
+
+                if (!_options.AttachmentsIncludeInlineImages && AttachmentClassifier.IsDecorativeInlineImage(a, prepared))
+                {
+                    result.SkippedInlineImages++;
+                    continue;
+                }
+
+                if (a.Data.Length == 0)
+                {
+                    result.Warnings.Add(Prefix(depth, sourceFileName, "La pièce jointe « " + a.FileName + " » est vide et n'a pas été enregistrée."));
+                    continue;
+                }
+
+                var saved = SaveAttachment(a, outputDirectory);
+                result.SavedAttachmentPaths.Add(saved);
+                Log("Pièce jointe enregistrée : " + saved);
+            }
+        }
+
+        // ------------------------------------------------------------------
+        // Helpers
+        // ------------------------------------------------------------------
 
         private static string SaveAttachment(EmailAttachment a, string folder)
         {
@@ -325,7 +444,7 @@ namespace CourrielPDF.Core.Conversion
                 case UnauthorizedAccessException u: return "Accès refusé : " + u.Message;
                 case PathTooLongException: return "Le chemin du fichier est trop long pour Windows.";
                 case IOException io: return "Erreur d'écriture ou de lecture : " + io.Message;
-                default: return "Le courriel n'a pu être converti (" + ex.GetType().Name + " : " + Shorten(ex.Message) + ").";
+                default: return "Le courriel n'a pu être traité (" + ex.GetType().Name + " : " + Shorten(ex.Message) + ").";
             }
         }
 

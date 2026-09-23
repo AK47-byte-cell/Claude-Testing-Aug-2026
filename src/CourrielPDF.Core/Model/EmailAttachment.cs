@@ -68,6 +68,22 @@ namespace CourrielPDF.Core.Model
             }
         }
 
+        /// <summary>An image a browser can draw (PNG, JPEG, GIF, BMP, WebP, SVG), judged from the content first.</summary>
+        public bool IsDisplayableImage
+        {
+            get
+            {
+                var magic = ImageSniffer.DetectMimeType(Data);
+                if (magic != null) return ImageSniffer.IsBrowserDisplayable(magic);
+                switch (Extension.ToLowerInvariant())
+                {
+                    case ".png": case ".jpg": case ".jpeg": case ".gif": case ".bmp": case ".webp": case ".svg":
+                        return true;
+                }
+                return ImageSniffer.IsBrowserDisplayable(MimeType);
+            }
+        }
+
         /// <summary>Best-effort MIME type for embedding the attachment as a data URI.</summary>
         public string EffectiveMimeType
         {

@@ -10,6 +10,7 @@ namespace CourrielPDF.App
     /// <summary>User preferences, stored as simple key=value lines under %APPDATA%\CourrielPDF.</summary>
     internal sealed class AppSettings
     {
+        public ConversionMode Mode { get; set; } = ConversionMode.ConvertToPdf;
         public NamingPattern Naming { get; set; } = NamingPattern.SameAsSource;
         public bool AppendPdfAttachments { get; set; } = true;
         public bool SaveOtherAttachments { get; set; } = true;
@@ -20,11 +21,18 @@ namespace CourrielPDF.App
         public bool IncludeProvenance { get; set; } = true;
         public bool OpenFolderAfter { get; set; }
         public string LastOutputFolder { get; set; } = string.Empty;
+
+        /// <summary>Destination of attachments-only mode. Empty means the Downloads folder, resolved at run time.</summary>
+        public string AttachmentsFolder { get; set; } = string.Empty;
+        public bool AttachmentsIncludeInlineImages { get; set; }
+
         public int WindowWidth { get; set; }
         public int WindowHeight { get; set; }
 
         public static string FolderPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CourrielPDF");
         public static string FilePath => Path.Combine(FolderPath, "parametres.txt");
+
+        public string ResolvedAttachmentsFolder => string.IsNullOrWhiteSpace(AttachmentsFolder) ? KnownFolders.Downloads : AttachmentsFolder;
 
         public ConversionOptions ToConversionOptions()
         {
@@ -38,6 +46,7 @@ namespace CourrielPDF.App
                 NumberPages = NumberPages,
                 AllowRemoteImages = AllowRemoteImages,
                 IncludeProvenance = IncludeProvenance,
+                AttachmentsIncludeInlineImages = AttachmentsIncludeInlineImages,
             };
         }
 
@@ -54,6 +63,8 @@ namespace CourrielPDF.App
                     if (eq <= 0) continue;
                     map[line.Substring(0, eq).Trim()] = line.Substring(eq + 1).Trim();
                 }
+                s.Mode = (ConversionMode)GetInt(map, "Mode", (int)s.Mode);
+                if (!Enum.IsDefined(typeof(ConversionMode), s.Mode)) s.Mode = ConversionMode.ConvertToPdf;
                 s.Naming = (NamingPattern)GetInt(map, "Naming", (int)s.Naming);
                 if (!Enum.IsDefined(typeof(NamingPattern), s.Naming)) s.Naming = NamingPattern.SameAsSource;
                 s.AppendPdfAttachments = GetBool(map, "AppendPdfAttachments", s.AppendPdfAttachments);
@@ -65,6 +76,8 @@ namespace CourrielPDF.App
                 s.IncludeProvenance = GetBool(map, "IncludeProvenance", s.IncludeProvenance);
                 s.OpenFolderAfter = GetBool(map, "OpenFolderAfter", s.OpenFolderAfter);
                 s.LastOutputFolder = map.TryGetValue("LastOutputFolder", out var f) ? f : string.Empty;
+                s.AttachmentsFolder = map.TryGetValue("AttachmentsFolder", out var af) ? af : string.Empty;
+                s.AttachmentsIncludeInlineImages = GetBool(map, "AttachmentsIncludeInlineImages", s.AttachmentsIncludeInlineImages);
                 s.WindowWidth = GetInt(map, "WindowWidth", 0);
                 s.WindowHeight = GetInt(map, "WindowHeight", 0);
             }
@@ -82,6 +95,7 @@ namespace CourrielPDF.App
                 Directory.CreateDirectory(FolderPath);
                 var lines = new[]
                 {
+                    "Mode=" + ((int)Mode).ToString(CultureInfo.InvariantCulture),
                     "Naming=" + ((int)Naming).ToString(CultureInfo.InvariantCulture),
                     "AppendPdfAttachments=" + AppendPdfAttachments,
                     "SaveOtherAttachments=" + SaveOtherAttachments,
@@ -92,6 +106,8 @@ namespace CourrielPDF.App
                     "IncludeProvenance=" + IncludeProvenance,
                     "OpenFolderAfter=" + OpenFolderAfter,
                     "LastOutputFolder=" + LastOutputFolder,
+                    "AttachmentsFolder=" + AttachmentsFolder,
+                    "AttachmentsIncludeInlineImages=" + AttachmentsIncludeInlineImages,
                     "WindowWidth=" + WindowWidth.ToString(CultureInfo.InvariantCulture),
                     "WindowHeight=" + WindowHeight.ToString(CultureInfo.InvariantCulture),
                 };
