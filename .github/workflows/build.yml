@@ -1,0 +1,156 @@
+name: Build
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  tests-linux:
+    name: Tests (Linux, Google Chrome)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore CourrielPDF.sln
+
+      - name: Build
+        run: dotnet build CourrielPDF.sln -c Release --no-restore
+
+      - name: Test (conversions rendered with Google Chrome)
+        run: dotnet test tests/CourrielPDF.Core.Tests/CourrielPDF.Core.Tests.csproj -c Release --no-build --logger "trx;LogFileName=tests-linux.trx" --results-directory TestResults
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-linux
+          path: TestResults
+
+  build-windows:
+    name: Build CourrielPDF.exe (Windows, Microsoft Edge)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore CourrielPDF.sln
+
+      - name: Build
+        run: dotnet build CourrielPDF.sln -c Release --no-restore
+
+      - name: Test (conversions rendered with Microsoft Edge)
+        run: dotnet test tests/CourrielPDF.Core.Tests/CourrielPDF.Core.Tests.csproj -c Release --no-build --logger "trx;LogFileName=tests-windows.trx" --results-directory TestResults
+
+      - name: Self-tests of CourrielPDF.exe (PDF with the WebView2 engine, then attachments-only)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $clientKey = '{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
+          $version = $null
+          foreach ($k in @("HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\$clientKey", "HKLM:\SOFTWARE\Microsoft\EdgeUpdate\Clients\$clientKey")) {
+            $v = (Get-ItemProperty -Path $k -ErrorAction SilentlyContinue).pv
+            if ($v) { $version = $v; break }
+          }
+          if (-not $version) {
+            Write-Host 'WebView2 Runtime absent: installing the Evergreen runtime'
+            $setup = Join-Path $env:RUNNER_TEMP 'MicrosoftEdgeWebview2Setup.exe'
+            Invoke-WebRequest -Uri 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile $setup
+            $install = Start-Process -FilePath $setup -ArgumentList '/silent','/install' -Wait -PassThru
+            Write-Host "Installer exit code: $($install.ExitCode)"
+          } else {
+            Write-Host "WebView2 Runtime $version already installed"
+          }
+          $fixtures = Join-Path $env:RUNNER_TEMP 'exemples'
+          dotnet run --project src/CourrielPDF.Cli -c Release --no-build -- exemples $fixtures
+          $out = Join-Path $env:RUNNER_TEMP 'autotest'
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+          $journal = Join-Path $out 'journal.txt'
+          $exe = (Resolve-Path 'src/CourrielPDF.App/bin/Release/net48/CourrielPDF.exe').Path
+          $run = Start-Process -FilePath $exe -ArgumentList @('--autotest', "`"$fixtures`"", "`"$out`"", "`"$journal`"") -Wait -PassThru
+          if (Test-Path $journal) { Get-Content $journal } else { Write-Host 'No journal was written' }
+          Get-ChildItem $out -Recurse | Select-Object FullName, Length | Format-Table -AutoSize
+          if ($run.ExitCode -ne 0) { throw "Self-test failed with exit code $($run.ExitCode)" }
+          if (-not (Select-String -Path $journal -Pattern 'moteur : WebView2' -Quiet)) { throw 'The WebView2 engine was not used by the self-test' }
+          $outPj = Join-Path $env:RUNNER_TEMP 'autotest-pj'
+          New-Item -ItemType Directory -Force -Path $outPj | Out-Null
+          $journalPj = Join-Path $outPj 'journal.txt'
+          $runPj = Start-Process -FilePath $exe -ArgumentList @('--autotest', "`"$fixtures`"", "`"$outPj`"", "`"$journalPj`"", 'pj') -Wait -PassThru
+          if (Test-Path $journalPj) { Get-Content $journalPj } else { Write-Host 'No journal was written (attachments-only)' }
+          Get-ChildItem $outPj -Recurse | Select-Object FullName, Length | Format-Table -AutoSize
+          if ($runPj.ExitCode -ne 0) { throw "Attachments-only self-test failed with exit code $($runPj.ExitCode)" }
+          if (-not (Test-Path (Join-Path $outPj "Rapport d'expertise.pdf"))) { throw 'Attachments-only self-test did not save the PDF attachment' }
+          if (-not (Test-Path (Join-Path $outPj 'Notes.docx'))) { throw 'Attachments-only self-test did not save the Word attachment' }
+          if (Test-Path (Join-Path $outPj 'Exemple courriel.pdf')) { throw 'Attachments-only self-test must not convert the e-mail itself' }
+          if (Test-Path (Join-Path $outPj 'logo.png')) { throw 'Attachments-only self-test must skip the inline signature image' }
+
+      - name: Collect artifacts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $bin = 'src/CourrielPDF.App/bin/Release/net48'
+          $stage = 'artifacts/CourrielPDF'
+          New-Item -ItemType Directory -Force -Path $stage, "$stage/x86", "$stage/arm64" | Out-Null
+          Copy-Item "$bin/CourrielPDF.exe", "$bin/CourrielPDF.exe.config", "$bin/WebView2Loader.dll" $stage/
+          Copy-Item "$bin/x86/WebView2Loader.dll" "$stage/x86/"
+          Copy-Item "$bin/arm64/WebView2Loader.dll" "$stage/arm64/"
+          $lisezMoi = @"
+          CourrielPDF - conversion de courriels en PDF par glisser-deposer
+          =================================================================
+
+          1. Gardez tous les fichiers de ce dossier ensemble (CourrielPDF.exe, CourrielPDF.exe.config,
+             WebView2Loader.dll et les sous-dossiers x86 et arm64).
+          2. Double-cliquez sur CourrielPDF.exe. Aucune installation, aucun droit d'administrateur.
+          3. Au premier lancement, si Windows affiche "Windows a protege votre ordinateur", cliquez
+             "Informations complementaires" puis "Executer quand meme" (l'application n'est pas signee).
+
+          WebView2Loader.dll est le chargeur officiel de Microsoft pour le composant Edge WebView2,
+          fourni tel quel (signe par Microsoft). Le bouton "Diagnostic..." de l'application decrit
+          l'environnement detecte en cas de difficulte.
+          "@
+          Set-Content -Path "$stage/LISEZ-MOI.txt" -Value $lisezMoi -Encoding UTF8
+          Compress-Archive -Path "$stage/*" -DestinationPath artifacts/CourrielPDF-portable.zip -Force
+          Get-ChildItem artifacts -Recurse | Select-Object FullName, Length | Format-Table -AutoSize
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-windows
+          path: TestResults
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CourrielPDF
+          path: artifacts/CourrielPDF-portable.zip
+
+      - name: Publish GitHub Release
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/claude/email-pdf-converter-app-vfebg5' || startsWith(github.ref, 'refs/tags/v'))
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = if ("${{ github.ref }}".StartsWith("refs/tags/")) { "${{ github.ref_name }}" } else { "v0.1.${{ github.run_number }}" }
+          $notes = @"
+          Version portable de CourrielPDF (aucune installation requise).
+
+          1. Téléchargez **CourrielPDF-portable.zip** ci-dessous et décompressez-le dans un dossier de votre choix.
+          2. Gardez ensemble les fichiers du dossier : CourrielPDF.exe, CourrielPDF.exe.config, WebView2Loader.dll (chargeur officiel Microsoft, signé) et les sous-dossiers x86 et arm64.
+          3. Double-cliquez sur CourrielPDF.exe. Si Windows affiche « Windows a protégé votre ordinateur », cliquez **Informations complémentaires** puis **Exécuter quand même** (l'application n'est pas signée numériquement).
+          4. Glissez-déposez vos courriels (.msg, .eml, dossiers ou messages directement depuis Outlook) dans la fenêtre.
+
+          Version : $tag — commit ${{ github.sha }}
+          "@
+          gh release create $tag artifacts/CourrielPDF-portable.zip --target ${{ github.sha }} --title "CourrielPDF $tag" --notes $notes --latest
