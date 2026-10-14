@@ -212,6 +212,30 @@
   .copy.done { background: var(--creeper-dark); border-color: #0b5a13; box-shadow: inset 3px 3px 0 var(--creeper); }
   .rsvp-note { margin-top: 16px; color: var(--paper); font-weight: 600; text-shadow: 2px 2px 0 var(--plank-dark); }
 
+  /* on-page RSVP form */
+  .rsvp-form { display: grid; gap: 14px; margin-top: 18px; }
+  .field { display: grid; gap: 6px; min-width: 0; }
+  .field label, .field legend {
+    font-family: var(--font-display); font-size: 9px; letter-spacing: 1px; text-transform: uppercase;
+    color: var(--paper); text-shadow: 2px 2px 0 var(--plank-dark);
+  }
+  .field input[type="text"], .field input[type="tel"], .field input[type="email"], .field textarea {
+    font: inherit; font-size: 20px; color: var(--ink); background: var(--paper);
+    border: 4px solid var(--stone-dark); box-shadow: inset 4px 4px 0 #d9d0b8;
+    padding: 10px 12px; width: 100%; min-width: 0; border-radius: 0; -webkit-appearance: none;
+  }
+  .field textarea { resize: vertical; }
+  .field input:focus, .field textarea:focus { outline: 4px solid var(--gold); outline-offset: 0; }
+  .choice { border: 0; padding: 0; margin: 0; }
+  .choice label { font-family: var(--font-body); font-size: 19px; text-transform: none; letter-spacing: 0; display: flex; gap: 10px; align-items: center; cursor: pointer; }
+  .choice input { width: 22px; height: 22px; accent-color: var(--creeper-dark); margin: 0; }
+  .form-error { margin: 0; color: #fff; background: var(--redstone); border: 4px solid #8f1f14; padding: 10px 12px; font-weight: 700; }
+  .rsvp-out { margin-top: 18px; display: grid; gap: 12px; }
+  .rsvp-text {
+    margin: 0; font: inherit; font-size: 18px; white-space: pre-wrap; overflow-wrap: anywhere;
+    background: var(--paper); color: var(--ink); border: 4px solid var(--stone-dark); padding: 12px 14px; user-select: all;
+  }
+
   .rules { display: grid; gap: 10px; }
   .rule { display: grid; grid-template-columns: 28px 1fr; gap: 12px; align-items: start; color: var(--paper); font-weight: 600; text-shadow: 2px 2px 0 var(--plank-dark); }
   .rule .cube { width: 20px; height: 20px; margin-top: 4px; background: var(--grass); box-shadow: inset 4px 4px 0 #8de06f, inset -4px -4px 0 var(--grass-dark); }
@@ -258,7 +282,7 @@
     </div>
     <div>
       <div class="eyebrow">You are invited</div>
-      <h1><span class="ph" id="hero-name">[Child's name]</span><br>is turning <span class="nine">9</span></h1>
+      <h1><span id="hero-name">Erik</span><br>is turning <span class="nine">9</span></h1>
     </div>
   </div>
 </header>
@@ -272,15 +296,15 @@
       <div class="slots">
         <div class="slot">
           <div class="k">When</div>
-          <div class="v"><span class="ph">[Saturday, Month 00, 2026]</span><small><span class="ph">[2:00 pm to 5:00 pm]</span></small></div>
+          <div class="v">Saturday, October 25, 2026<small><span class="ph">[Start time to end time]</span></small></div>
         </div>
         <div class="slot">
           <div class="k">Where</div>
-          <div class="v"><span class="ph">[Venue name]</span><small><span class="ph">[Street address, City]</span></small></div>
+          <div class="v">Royal Mount Arcade<small><span class="ph">[Street address, Montréal]</span></small></div>
         </div>
         <div class="slot">
           <div class="k">Loot</div>
-          <div class="v">Pizza, cake and party favours are covered. Just bring your player.</div>
+          <div class="v">Arcade play, pizza and cake are covered. Just bring your player.</div>
         </div>
         <div class="slot">
           <div class="k">Dress</div>
@@ -290,10 +314,46 @@
     </section>
 
     <section class="sign" aria-labelledby="h-rsvp">
-      <h2 id="h-rsvp">RSVP by <span class="ph" id="rsvp-by">[Month 00]</span></h2>
-      <p class="rsvp-note">Fill out the short form so we know who is coming and about any allergies. It takes about a minute.</p>
+      <h2 id="h-rsvp">RSVP by October 18</h2>
+      <p class="rsvp-note">Fill in the short form so we know who is coming and about any allergies. It takes about a minute.</p>
       <div class="rsvp-row">
         <a class="btn" id="rsvp-btn" href="#" target="_blank" rel="noopener">Open the RSVP form</a>
+      </div>
+      <form id="rsvp-form" class="rsvp-form" novalidate>
+        <div class="field">
+          <label for="f-kid">Kid's name</label>
+          <input id="f-kid" name="kid" type="text" autocomplete="off" required>
+        </div>
+        <div class="field">
+          <label for="f-cell">Parent's cell</label>
+          <input id="f-cell" name="cell" type="tel" autocomplete="tel" required>
+        </div>
+        <div class="field">
+          <label for="f-email">Parent's email</label>
+          <input id="f-email" name="email" type="email" autocomplete="email">
+        </div>
+        <div class="field">
+          <label for="f-needs">Allergies or accommodations requested</label>
+          <textarea id="f-needs" name="needs" rows="3" placeholder="None, or tell us what we should know"></textarea>
+        </div>
+        <fieldset class="field choice">
+          <legend>Coming?</legend>
+          <label><input type="radio" name="coming" value="Yes" id="f-yes" checked> Yes, count us in</label>
+          <label><input type="radio" name="coming" value="No" id="f-no"> Can't make it this time</label>
+        </fieldset>
+        <p class="form-error" id="form-error" hidden>Please add the kid's name and a cell number so we can reach you.</p>
+        <div class="rsvp-row">
+          <button class="btn" type="submit" id="f-submit">Send RSVP</button>
+        </div>
+      </form>
+      <div class="rsvp-out" id="rsvp-out" hidden>
+        <p class="rsvp-note" id="out-title">Your RSVP is ready. We copied it for you.</p>
+        <pre class="rsvp-text" id="out-text"></pre>
+        <div class="rsvp-row">
+          <button class="btn secondary" type="button" id="out-copy">Copy again</button>
+          <a class="btn" id="out-mail" href="#" hidden>Open in your email app</a>
+        </div>
+        <p class="rsvp-note" id="out-help">Paste it into a text or email to Erik's parents using the contact below.</p>
       </div>
       <p class="rsvp-note" id="rsvp-fallback-note">Prefer to reply directly? Text or email <span class="ph">[Parent's name]</span>:</p>
       <div class="contact">
@@ -316,7 +376,7 @@
         <div class="rule"><span class="cube" aria-hidden="true"></span><span>Drop-off is fine. Parents are welcome to stay, too. There will be coffee.</span></div>
         <div class="rule"><span class="cube d" aria-hidden="true"></span><span>Tell us about allergies or food restrictions in the form so every player gets the right loot.</span></div>
         <div class="rule"><span class="cube r" aria-hidden="true"></span><span>No creepers. Siblings are welcome if you let us know in the form.</span></div>
-        <div class="rule"><span class="cube g" aria-hidden="true"></span><span>Pick-up is at <span class="ph">[5:00 pm]</span>. Players will be tired and full of cake.</span></div>
+        <div class="rule"><span class="cube g" aria-hidden="true"></span><span>Pick-up is at <span class="ph">[end time]</span>. Players will be tired and full of cake.</span></div>
       </div>
     </section>
 
@@ -328,18 +388,72 @@
 </main>
 
 <script>
-  // The RSVP form link. Paste the Google Form "Send" link here.
+  // Optional: a Google Form "Send" link. When set, the button to it replaces the on-page form.
   const RSVP_FORM_URL = "";
+  // Where RSVPs go. Email is used for the "Open in your email app" link; phone is shown as text.
+  const HOST_EMAIL = "";
+  const HOST_NAME = "Erik's parents";
 
   (function () {
     const btn = document.getElementById("rsvp-btn");
-    const note = document.getElementById("rsvp-fallback-note");
+    const form = document.getElementById("rsvp-form");
+    const out = document.getElementById("rsvp-out");
+    const outText = document.getElementById("out-text");
+    const outMail = document.getElementById("out-mail");
+    const outTitle = document.getElementById("out-title");
+    const err = document.getElementById("form-error");
+
     if (RSVP_FORM_URL) {
       btn.href = RSVP_FORM_URL;
+      form.hidden = true;
     } else {
       btn.hidden = true;
-      note.textContent = "Reply by text or email to " + "[Parent's name]" + ":";
     }
+
+    function copyText(text) {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        return navigator.clipboard.writeText(text).then(function () { return true; }, function () { return false; });
+      }
+      return Promise.resolve(false);
+    }
+
+    form.addEventListener("submit", function (ev) {
+      ev.preventDefault();
+      const kid = document.getElementById("f-kid").value.trim();
+      const cell = document.getElementById("f-cell").value.trim();
+      const email = document.getElementById("f-email").value.trim();
+      const needs = document.getElementById("f-needs").value.trim();
+      const coming = form.querySelector('input[name="coming"]:checked').value;
+      if (!kid || !cell) { err.hidden = false; return; }
+      err.hidden = true;
+      const lines = [
+        "RSVP for Erik's 9th birthday (Saturday, October 25)",
+        "Kid's name: " + kid,
+        "Coming: " + coming,
+        "Parent's cell: " + cell,
+        "Parent's email: " + (email || "not given"),
+        "Allergies or accommodations: " + (needs || "none")
+      ];
+      const text = lines.join("\n");
+      outText.textContent = text;
+      if (HOST_EMAIL) {
+        outMail.href = "mailto:" + HOST_EMAIL + "?subject=" + encodeURIComponent("RSVP: " + kid + " for Erik's birthday") + "&body=" + encodeURIComponent(text);
+        outMail.hidden = false;
+      }
+      out.hidden = false;
+      copyText(text).then(function (ok) {
+        outTitle.textContent = ok ? "Your RSVP is ready. We copied it for you." : "Your RSVP is ready. Select the text below to copy it.";
+      });
+      out.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+
+    document.getElementById("out-copy").addEventListener("click", function () {
+      const b = this;
+      copyText(outText.textContent).then(function (ok) {
+        b.textContent = ok ? "Copied" : "Select the text above";
+        setTimeout(function () { b.textContent = "Copy again"; }, 1800);
+      });
+    });
 
     document.querySelectorAll(".copy").forEach(function (b) {
       b.addEventListener("click", function () {

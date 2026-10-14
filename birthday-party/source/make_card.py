@@ -12,7 +12,7 @@ QR_PATH, OUT_DIR, FONT_DIR = sys.argv[1], sys.argv[2], sys.argv[3]
 URL = sys.argv[4]
 NAME = sys.argv[5] if len(sys.argv) > 5 else "[Child's name]"
 DATE = sys.argv[6] if len(sys.argv) > 6 else "[Saturday, Month 00, 2026]"
-TIME = sys.argv[7] if len(sys.argv) > 7 else "[2:00 pm to 5:00 pm]"
+WHERE = sys.argv[7] if len(sys.argv) > 7 else "[Venue]"
 RSVP_BY = sys.argv[8] if len(sys.argv) > 8 else "[Month 00]"
 
 DPI = 300
@@ -173,26 +173,26 @@ slot_font_v = body(40)
 
 
 def slot(y, k, v):
-    h = 80
+    h = 72
     rect(60 + 8, y + 8, W - 120, h, (0, 0, 0))
     rect(60, y, W - 120, h, STONE_D)
     rect(60, y, 300, h, STONE_D)
     rect(360, y + 8, W - 120 - 300 - 8, h - 16, PAPER)
     d.text((90, y + h // 2), k, font=slot_font_k, fill=GOLD, anchor="lm")
     d.text((390, y + h // 2), v, font=slot_font_v, fill=INK, anchor="lm")
-    return y + h + 20
+    return y + h + 14
 
 
-y = slot(slot_y, "WHEN", f"{DATE}, {TIME}")
+y = slot(slot_y, "WHEN", DATE)
+y = slot(y, "WHERE", WHERE)
 y = slot(y, "RSVP BY", RSVP_BY)
 
 # fallback URL and bedrock footer
 url_font = body(30)
-d.text((W // 2, H - 128), "Can't scan? Type this address:", font=url_font, fill=PAPER, anchor="mm")
-d.text((W // 2, H - 88), URL.replace("https://", ""), font=body(34), fill=(255, 255, 255), anchor="mm")
-rect(0, H - 48, W, 48, STONE_D)
+d.text((W // 2, H - 72), "Can't scan?  " + URL.replace("https://", ""), font=body(30), fill=(255, 255, 255), anchor="mm")
+rect(0, H - 40, W, 40, STONE_D)
 for xx in range(0, W, 44):
-    rect(xx, H - 48, 3, 48, (30, 30, 30))
+    rect(xx, H - 40, 3, 40, (30, 30, 30))
 
 card_png = f"{OUT_DIR}/invitation-card-5x7.png"
 img.save(card_png, dpi=(DPI, DPI))
