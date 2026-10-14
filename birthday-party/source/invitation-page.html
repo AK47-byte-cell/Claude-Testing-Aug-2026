@@ -1,0 +1,367 @@
+<title>Block Party Invitation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Pixelify+Sans:wght@400;600;700&display=swap">
+<style>
+  /* Layout: a vertical slice of a block world. Sky on top, a grass line, then
+     the invitation sits on dirt and stone as a row of wooden-plank signs.
+     Single committed look (a daytime overworld), so no dark variant. */
+  :root {
+    --sky: #86c0ff;
+    --sky-deep: #4f93ec;
+    --cloud: #ffffff;
+    --grass: #5fbf45;
+    --grass-dark: #3d8f2c;
+    --dirt: #8c5a2b;
+    --dirt-dark: #5f3b1a;
+    --stone: #7d7d7d;
+    --stone-dark: #4a4a4a;
+    --plank: #c1904f;
+    --plank-dark: #8a5f2c;
+    --plank-light: #dcb074;
+    --paper: #f6efdc;
+    --ink: #1e1a12;
+    --ink-soft: #5a4a33;
+    --creeper: #2ec93b;
+    --creeper-dark: #138c20;
+    --diamond: #52d8e9;
+    --diamond-dark: #1f9bb0;
+    --redstone: #d8392a;
+    --gold: #f2c14e;
+    --font-display: "Press Start 2P", "Courier New", monospace;
+    --font-body: "Pixelify Sans", "Trebuchet MS", "Segoe UI", sans-serif;
+    --px: 6px;
+    color-scheme: light;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--dirt);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 19px;
+    line-height: 1.45;
+    -webkit-font-smoothing: none;
+    overflow-x: hidden;
+  }
+  a { color: inherit; }
+  :focus-visible { outline: 4px solid var(--gold); outline-offset: 2px; }
+
+  /* ---------- sky ---------- */
+  .sky {
+    position: relative;
+    background:
+      linear-gradient(var(--sky) 0 60%, #9ed0ff 60% 100%);
+    padding-block: 28px 0;
+    padding-inline: 16px;
+    overflow: hidden;
+  }
+  .sun {
+    position: absolute; right: 8%; top: 24px;
+    width: 48px; height: 48px; background: var(--gold);
+    box-shadow:
+      -12px 0 0 var(--gold), 12px 0 0 var(--gold), 0 -12px 0 var(--gold), 0 12px 0 var(--gold);
+  }
+  .cloud {
+    position: absolute; height: 16px; background: var(--cloud);
+    box-shadow: 16px -16px 0 var(--cloud), 32px -16px 0 var(--cloud), 48px 0 0 var(--cloud), -16px 0 0 var(--cloud);
+    opacity: .95;
+  }
+  .c1 { left: 6%; top: 60px; width: 48px; }
+  .c2 { left: 48%; top: 30px; width: 64px; }
+  .c3 { left: 78%; top: 110px; width: 40px; }
+
+  .hero {
+    position: relative;
+    max-width: 760px; margin: 0 auto;
+    display: grid; grid-template-columns: auto 1fr; gap: 24px; align-items: end;
+    padding-block: 36px 24px;
+  }
+  .hero h1 {
+    font-family: var(--font-display);
+    font-size: clamp(18px, 4.2vw, 34px);
+    line-height: 1.6;
+    margin: 0;
+    color: #fff;
+    text-shadow: 4px 4px 0 var(--stone-dark);
+    text-wrap: balance;
+    letter-spacing: .5px;
+  }
+  .hero h1 .nine {
+    display: inline-block;
+    color: var(--gold);
+    font-size: 1.9em;
+    line-height: 1;
+    vertical-align: -6px;
+    text-shadow: 5px 5px 0 var(--stone-dark);
+  }
+  .eyebrow {
+    font-family: var(--font-display);
+    font-size: 11px; letter-spacing: 2px; text-transform: uppercase;
+    color: var(--stone-dark);
+    background: var(--gold);
+    display: inline-block; padding: 8px 10px; margin-bottom: 18px;
+    box-shadow: 4px 4px 0 var(--stone-dark);
+  }
+
+  /* ---------- pixel art (box-shadow sprites) ---------- */
+  .sprite { position: relative; width: calc(var(--px) * 8); height: calc(var(--px) * 8); }
+  .sprite i { position: absolute; left: 0; top: 0; width: var(--px); height: var(--px); display: block; }
+  .creeper { --px: 12px; }
+  .creeper i.face {
+    background: var(--creeper);
+    /* 8x8 creeper face: darker pixels for eyes and mouth */
+    box-shadow:
+      calc(var(--px)*1) 0 var(--creeper), calc(var(--px)*2) 0 var(--creeper), calc(var(--px)*3) 0 var(--creeper), calc(var(--px)*4) 0 var(--creeper), calc(var(--px)*5) 0 var(--creeper), calc(var(--px)*6) 0 var(--creeper), calc(var(--px)*7) 0 var(--creeper),
+      0 calc(var(--px)*1) var(--creeper), calc(var(--px)*1) calc(var(--px)*1) var(--creeper), calc(var(--px)*2) calc(var(--px)*1) var(--creeper), calc(var(--px)*3) calc(var(--px)*1) var(--creeper), calc(var(--px)*4) calc(var(--px)*1) var(--creeper), calc(var(--px)*5) calc(var(--px)*1) var(--creeper), calc(var(--px)*6) calc(var(--px)*1) var(--creeper), calc(var(--px)*7) calc(var(--px)*1) var(--creeper),
+      0 calc(var(--px)*2) var(--creeper), calc(var(--px)*1) calc(var(--px)*2) var(--creeper-dark), calc(var(--px)*2) calc(var(--px)*2) var(--creeper-dark), calc(var(--px)*3) calc(var(--px)*2) var(--creeper), calc(var(--px)*4) calc(var(--px)*2) var(--creeper), calc(var(--px)*5) calc(var(--px)*2) var(--creeper-dark), calc(var(--px)*6) calc(var(--px)*2) var(--creeper-dark), calc(var(--px)*7) calc(var(--px)*2) var(--creeper),
+      0 calc(var(--px)*3) var(--creeper), calc(var(--px)*1) calc(var(--px)*3) var(--creeper-dark), calc(var(--px)*2) calc(var(--px)*3) var(--creeper-dark), calc(var(--px)*3) calc(var(--px)*3) var(--creeper), calc(var(--px)*4) calc(var(--px)*3) var(--creeper), calc(var(--px)*5) calc(var(--px)*3) var(--creeper-dark), calc(var(--px)*6) calc(var(--px)*3) var(--creeper-dark), calc(var(--px)*7) calc(var(--px)*3) var(--creeper),
+      0 calc(var(--px)*4) var(--creeper), calc(var(--px)*1) calc(var(--px)*4) var(--creeper), calc(var(--px)*2) calc(var(--px)*4) var(--creeper), calc(var(--px)*3) calc(var(--px)*4) var(--creeper-dark), calc(var(--px)*4) calc(var(--px)*4) var(--creeper-dark), calc(var(--px)*5) calc(var(--px)*4) var(--creeper), calc(var(--px)*6) calc(var(--px)*4) var(--creeper), calc(var(--px)*7) calc(var(--px)*4) var(--creeper),
+      0 calc(var(--px)*5) var(--creeper), calc(var(--px)*1) calc(var(--px)*5) var(--creeper), calc(var(--px)*2) calc(var(--px)*5) var(--creeper-dark), calc(var(--px)*3) calc(var(--px)*5) var(--creeper-dark), calc(var(--px)*4) calc(var(--px)*5) var(--creeper-dark), calc(var(--px)*5) calc(var(--px)*5) var(--creeper-dark), calc(var(--px)*6) calc(var(--px)*5) var(--creeper), calc(var(--px)*7) calc(var(--px)*5) var(--creeper),
+      0 calc(var(--px)*6) var(--creeper), calc(var(--px)*1) calc(var(--px)*6) var(--creeper), calc(var(--px)*2) calc(var(--px)*6) var(--creeper-dark), calc(var(--px)*3) calc(var(--px)*6) var(--creeper-dark), calc(var(--px)*4) calc(var(--px)*6) var(--creeper-dark), calc(var(--px)*5) calc(var(--px)*6) var(--creeper-dark), calc(var(--px)*6) calc(var(--px)*6) var(--creeper), calc(var(--px)*7) calc(var(--px)*6) var(--creeper),
+      0 calc(var(--px)*7) var(--creeper), calc(var(--px)*1) calc(var(--px)*7) var(--creeper), calc(var(--px)*2) calc(var(--px)*7) var(--creeper-dark), calc(var(--px)*3) calc(var(--px)*7) var(--creeper), calc(var(--px)*4) calc(var(--px)*7) var(--creeper), calc(var(--px)*5) calc(var(--px)*7) var(--creeper-dark), calc(var(--px)*6) calc(var(--px)*7) var(--creeper), calc(var(--px)*7) calc(var(--px)*7) var(--creeper);
+  }
+  .creeper-wrap { box-shadow: 6px 6px 0 rgba(0,0,0,.25); }
+
+  /* ---------- ground ---------- */
+  .grass-line {
+    height: 22px;
+    background:
+      repeating-linear-gradient(90deg, var(--grass) 0 12px, var(--grass-dark) 12px 18px, var(--grass) 18px 30px, var(--grass-dark) 30px 36px);
+    border-top: 6px solid var(--grass);
+    border-bottom: 6px solid var(--grass-dark);
+  }
+  .ground {
+    background:
+      repeating-linear-gradient(0deg, transparent 0 22px, rgba(0,0,0,.08) 22px 24px),
+      repeating-linear-gradient(90deg, transparent 0 22px, rgba(0,0,0,.08) 22px 24px),
+      var(--dirt);
+    padding-inline: 16px;
+    padding-block: 32px 0;
+  }
+  .stack { max-width: 760px; margin: 0 auto; display: grid; gap: 28px; }
+
+  /* ---------- wooden sign panels ---------- */
+  .sign {
+    background:
+      repeating-linear-gradient(0deg, transparent 0 34px, rgba(0,0,0,.10) 34px 38px),
+      var(--plank);
+    border: 6px solid var(--plank-dark);
+    box-shadow:
+      inset 6px 6px 0 var(--plank-light),
+      inset -6px -6px 0 var(--plank-dark),
+      8px 8px 0 rgba(0,0,0,.35);
+    padding: 26px 24px 28px;
+    min-width: 0;
+  }
+  .sign h2 {
+    font-family: var(--font-display);
+    font-size: 14px; line-height: 1.7;
+    margin: 0 0 18px;
+    color: var(--paper);
+    text-shadow: 3px 3px 0 var(--plank-dark);
+    letter-spacing: 1px; text-transform: uppercase;
+  }
+  .sign p { margin: 0; }
+
+  /* details laid out like an inventory grid: label slot + value slot */
+  .slots { display: grid; gap: 12px; }
+  .slot {
+    display: grid; grid-template-columns: 116px 1fr; align-items: stretch;
+    background: var(--stone);
+    border: 4px solid var(--stone-dark);
+    box-shadow: inset 4px 4px 0 #a8a8a8, inset -4px -4px 0 #5e5e5e;
+    min-width: 0;
+  }
+  .slot .k {
+    font-family: var(--font-display); font-size: 9px; letter-spacing: 1px; text-transform: uppercase;
+    color: var(--gold); background: var(--stone-dark);
+    padding: 14px 10px; display: flex; align-items: center;
+  }
+  .slot .v {
+    padding: 10px 14px; font-weight: 600; color: var(--ink); background: var(--paper);
+    font-size: 20px; line-height: 1.35; min-width: 0; overflow-wrap: anywhere;
+  }
+  .slot .v small { display: block; font-weight: 400; color: var(--ink-soft); font-size: 17px; }
+  .ph { background: #ffe9a8; padding: 0 4px; border-bottom: 3px dashed var(--redstone); }
+
+  /* RSVP */
+  .rsvp-row { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; margin-top: 6px; }
+  .btn {
+    font-family: var(--font-display); font-size: 12px; line-height: 1.5;
+    text-decoration: none; text-align: center;
+    color: #fff; background: var(--creeper-dark);
+    border: 4px solid #0b5a13;
+    box-shadow: inset 4px 4px 0 var(--creeper), inset -4px -4px 0 #0b5a13, 6px 6px 0 rgba(0,0,0,.35);
+    padding: 16px 20px; display: inline-block; cursor: pointer;
+  }
+  .btn:hover { transform: translate(2px, 2px); box-shadow: inset 4px 4px 0 var(--creeper), inset -4px -4px 0 #0b5a13, 4px 4px 0 rgba(0,0,0,.35); }
+  .btn.secondary { background: var(--diamond-dark); border-color: #116b7a; box-shadow: inset 4px 4px 0 var(--diamond), inset -4px -4px 0 #116b7a, 6px 6px 0 rgba(0,0,0,.35); }
+  .btn.secondary:hover { box-shadow: inset 4px 4px 0 var(--diamond), inset -4px -4px 0 #116b7a, 4px 4px 0 rgba(0,0,0,.35); }
+  .contact { display: grid; gap: 10px; margin-top: 18px; }
+  .contact-line {
+    display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+    background: var(--paper); border: 4px solid var(--plank-dark); padding: 10px 12px; min-width: 0;
+  }
+  .contact-line .lbl { font-family: var(--font-display); font-size: 9px; color: var(--ink-soft); letter-spacing: 1px; text-transform: uppercase; }
+  .contact-line .val { font-weight: 700; font-size: 20px; user-select: all; overflow-wrap: anywhere; min-width: 0; }
+  .copy {
+    margin-left: auto; font-family: var(--font-display); font-size: 9px;
+    background: var(--stone); color: #fff; border: 3px solid var(--stone-dark); padding: 8px 10px; cursor: pointer;
+    box-shadow: inset 3px 3px 0 #a8a8a8;
+  }
+  .copy.done { background: var(--creeper-dark); border-color: #0b5a13; box-shadow: inset 3px 3px 0 var(--creeper); }
+  .rsvp-note { margin-top: 16px; color: var(--paper); font-weight: 600; text-shadow: 2px 2px 0 var(--plank-dark); }
+
+  .rules { display: grid; gap: 10px; }
+  .rule { display: grid; grid-template-columns: 28px 1fr; gap: 12px; align-items: start; color: var(--paper); font-weight: 600; text-shadow: 2px 2px 0 var(--plank-dark); }
+  .rule .cube { width: 20px; height: 20px; margin-top: 4px; background: var(--grass); box-shadow: inset 4px 4px 0 #8de06f, inset -4px -4px 0 var(--grass-dark); }
+  .rule .cube.d { background: var(--diamond); box-shadow: inset 4px 4px 0 #a5f0f8, inset -4px -4px 0 var(--diamond-dark); }
+  .rule .cube.r { background: var(--redstone); box-shadow: inset 4px 4px 0 #ff7d6e, inset -4px -4px 0 #8f1f14; }
+  .rule .cube.g { background: var(--gold); box-shadow: inset 4px 4px 0 #ffe08f, inset -4px -4px 0 #b4871c; }
+
+  /* bedrock footer */
+  .bedrock {
+    margin-top: 40px;
+    background:
+      repeating-linear-gradient(0deg, transparent 0 22px, rgba(255,255,255,.05) 22px 24px),
+      repeating-linear-gradient(90deg, transparent 0 22px, rgba(0,0,0,.25) 22px 24px),
+      var(--stone-dark);
+    color: #cfcfcf; text-align: center;
+    padding-block: 22px calc(22px + env(safe-area-inset-bottom, 0px));
+    padding-inline: 16px;
+    font-family: var(--font-display); font-size: 9px; line-height: 2; letter-spacing: 1px;
+  }
+
+  @media (max-width: 560px) {
+    .hero { grid-template-columns: 1fr; justify-items: start; gap: 18px; }
+    .slot { grid-template-columns: 1fr; }
+    .slot .k { padding: 10px 12px; }
+    .sign { padding: 20px 16px 22px; }
+    body { font-size: 18px; }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .c1 { animation: drift 48s linear infinite; }
+    .c2 { animation: drift 64s linear infinite; }
+    .c3 { animation: drift 56s linear infinite; }
+    @keyframes drift { from { transform: translateX(0); } to { transform: translateX(120px); } }
+  }
+</style>
+
+<header class="sky">
+  <div class="sun" aria-hidden="true"></div>
+  <div class="cloud c1" aria-hidden="true"></div>
+  <div class="cloud c2" aria-hidden="true"></div>
+  <div class="cloud c3" aria-hidden="true"></div>
+  <div class="hero">
+    <div class="creeper-wrap" aria-hidden="true">
+      <div class="sprite creeper"><i class="face"></i></div>
+    </div>
+    <div>
+      <div class="eyebrow">You are invited</div>
+      <h1><span class="ph" id="hero-name">[Child's name]</span><br>is turning <span class="nine">9</span></h1>
+    </div>
+  </div>
+</header>
+<div class="grass-line" aria-hidden="true"></div>
+
+<main class="ground">
+  <div class="stack">
+
+    <section class="sign" aria-labelledby="h-details">
+      <h2 id="h-details">Quest details</h2>
+      <div class="slots">
+        <div class="slot">
+          <div class="k">When</div>
+          <div class="v"><span class="ph">[Saturday, Month 00, 2026]</span><small><span class="ph">[2:00 pm to 5:00 pm]</span></small></div>
+        </div>
+        <div class="slot">
+          <div class="k">Where</div>
+          <div class="v"><span class="ph">[Venue name]</span><small><span class="ph">[Street address, City]</span></small></div>
+        </div>
+        <div class="slot">
+          <div class="k">Loot</div>
+          <div class="v">Pizza, cake and party favours are covered. Just bring your player.</div>
+        </div>
+        <div class="slot">
+          <div class="k">Dress</div>
+          <div class="v">Comfy clothes you can run in. Costumes very welcome.</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="sign" aria-labelledby="h-rsvp">
+      <h2 id="h-rsvp">RSVP by <span class="ph" id="rsvp-by">[Month 00]</span></h2>
+      <p class="rsvp-note">Fill out the short form so we know who is coming and about any allergies. It takes about a minute.</p>
+      <div class="rsvp-row">
+        <a class="btn" id="rsvp-btn" href="#" target="_blank" rel="noopener">Open the RSVP form</a>
+      </div>
+      <p class="rsvp-note" id="rsvp-fallback-note">Prefer to reply directly? Text or email <span class="ph">[Parent's name]</span>:</p>
+      <div class="contact">
+        <div class="contact-line">
+          <span class="lbl">Text</span>
+          <span class="val" id="phone">[000-000-0000]</span>
+          <button class="copy" type="button" data-copy="phone">Copy</button>
+        </div>
+        <div class="contact-line">
+          <span class="lbl">Email</span>
+          <span class="val" id="email">[email@example.com]</span>
+          <button class="copy" type="button" data-copy="email">Copy</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="sign" aria-labelledby="h-rules">
+      <h2 id="h-rules">Server rules</h2>
+      <div class="rules">
+        <div class="rule"><span class="cube" aria-hidden="true"></span><span>Drop-off is fine. Parents are welcome to stay, too. There will be coffee.</span></div>
+        <div class="rule"><span class="cube d" aria-hidden="true"></span><span>Tell us about allergies or food restrictions in the form so every player gets the right loot.</span></div>
+        <div class="rule"><span class="cube r" aria-hidden="true"></span><span>No creepers. Siblings are welcome if you let us know in the form.</span></div>
+        <div class="rule"><span class="cube g" aria-hidden="true"></span><span>Pick-up is at <span class="ph">[5:00 pm]</span>. Players will be tired and full of cake.</span></div>
+      </div>
+    </section>
+
+  </div>
+
+  <footer class="bedrock">
+    Scan the code on your invitation any time to come back here.
+  </footer>
+</main>
+
+<script>
+  // The RSVP form link. Paste the Google Form "Send" link here.
+  const RSVP_FORM_URL = "";
+
+  (function () {
+    const btn = document.getElementById("rsvp-btn");
+    const note = document.getElementById("rsvp-fallback-note");
+    if (RSVP_FORM_URL) {
+      btn.href = RSVP_FORM_URL;
+    } else {
+      btn.hidden = true;
+      note.textContent = "Reply by text or email to " + "[Parent's name]" + ":";
+    }
+
+    document.querySelectorAll(".copy").forEach(function (b) {
+      b.addEventListener("click", function () {
+        const el = document.getElementById(b.dataset.copy);
+        const text = el.textContent.trim();
+        const done = function () {
+          b.textContent = "Copied";
+          b.classList.add("done");
+          setTimeout(function () { b.textContent = "Copy"; b.classList.remove("done"); }, 1800);
+        };
+        const fallback = function () {
+          try {
+            const r = document.createRange(); r.selectNodeContents(el);
+            const s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+            b.textContent = "Selected";
+            setTimeout(function () { b.textContent = "Copy"; }, 1800);
+          } catch (e) {}
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done, fallback);
+        } else { fallback(); }
+      });
+    });
+  })();
+</script>
