@@ -238,8 +238,8 @@ class TranscribeLoop:
                 write_text_atomic(md, render_markdown(result, path, self.engine.name))
         except Exception as exc:
             attempts = self.manifest.mark_failed(path, st.st_size, st.st_mtime, f"{type(exc).__name__}: {exc}")
-            log.exception("Transcription of %s failed (attempt %d/%d): %s", path.name, attempts,
-                          self.tc.max_attempts, exc)
+            log.exception("Transcription of %s failed (attempt %d/%d)", path.name, attempts,
+                          self.tc.max_attempts)
             return None
         self.manifest.mark_transcribed(path, st.st_size, st.st_mtime, sha256_file(path), txt,
                                        self.engine.name, result.language)

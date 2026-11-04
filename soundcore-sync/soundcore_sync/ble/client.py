@@ -196,7 +196,7 @@ class RecorderClient:
         self.client = None
         self.session_key = None
 
-    async def __aenter__(self) -> RecorderClient:
+    async def __aenter__(self) -> Self:
         return self
 
     async def __aexit__(self, *exc) -> None:
