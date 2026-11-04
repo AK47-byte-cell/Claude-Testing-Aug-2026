@@ -1,0 +1,48 @@
+from pathlib import Path
+
+import pytest
+
+from soundcore_sync.config import Config
+
+
+def test_defaults_have_inbox_and_state_dir():
+    cfg = Config()
+    assert cfg.folders.inbox.name
+    assert cfg.folders.state_dir.name == ".soundcore-sync"
+    assert cfg.transcription.model == "medium"
+
+
+def test_from_dict_expands_and_casts(monkeypatch):
+    monkeypatch.setenv("MYDRIVE", "/drive")
+    cfg = Config.from_dict({
+        "folders": {"inbox": "$MYDRIVE/rec", "transcripts": "~/out"},
+        "recorder": {"scan_interval_seconds": 5, "enabled": 0},
+        "transcription": {"language": "fr", "beam_size": "3", "extensions": ["ogg", ".mp3"]},
+        "logging": {"level": "debug"},
+    })
+    assert cfg.folders.inbox == Path("/drive/rec")
+    assert cfg.folders.transcripts == Path("~/out").expanduser()
+    assert cfg.recorder.scan_interval_seconds == 5.0 and cfg.recorder.enabled is False
+    assert cfg.transcription.language == "fr" and cfg.transcription.beam_size == 3
+    assert cfg.transcription.extensions == (".ogg", ".mp3")
+    assert cfg.logging.level == "DEBUG"
+
+
+def test_unknown_option_is_rejected():
+    with pytest.raises(ValueError):
+        Config.from_dict({"recorder": {"scan_intervl": 5}})
+
+
+def test_load_missing_file_gives_defaults(tmp_path):
+    cfg = Config.load(tmp_path / "nope.toml")
+    assert cfg.source is None
+    assert cfg.logging.file == cfg.folders.state_dir / "soundcore-sync.log"
+
+
+def test_load_file(tmp_path):
+    p = tmp_path / "c.toml"
+    p.write_text(f'[folders]\ninbox = "{(tmp_path / "in").as_posix()}"\n[transcription]\nmodel = "small"\n')
+    cfg = Config.load(p)
+    assert cfg.folders.inbox == tmp_path / "in"
+    assert cfg.transcription.model == "small"
+    assert cfg.source == p

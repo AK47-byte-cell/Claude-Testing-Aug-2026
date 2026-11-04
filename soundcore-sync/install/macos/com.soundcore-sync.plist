@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copy to ~/Library/LaunchAgents/, replace the two paths, then:
+     launchctl load ~/Library/LaunchAgents/com.soundcore-sync.plist
+     Give the python binary Bluetooth access when macOS asks (System Settings > Privacy). -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key><string>com.soundcore-sync</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/PATH/TO/soundcore-sync/.venv/bin/python</string>
+        <string>-m</string><string>soundcore_sync</string><string>run</string>
+    </array>
+    <key>WorkingDirectory</key><string>/PATH/TO/soundcore-sync</string>
+    <key>RunAtLoad</key><true/>
+    <key>KeepAlive</key><true/>
+    <key>StandardOutPath</key><string>/tmp/soundcore-sync.out</string>
+    <key>StandardErrorPath</key><string>/tmp/soundcore-sync.err</string>
+</dict>
+</plist>

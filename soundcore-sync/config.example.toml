@@ -1,0 +1,32 @@
+# soundcore-sync configuration. Copy to ~/.soundcore-sync/config.toml (or run: soundcore-sync init).
+# Paths may use ~ and environment variables such as %OneDrive% (Windows) or $HOME.
+
+[folders]
+# Where recordings are written by the Bluetooth puller AND watched for transcription.
+# Point this at a folder inside OneDrive and OneDrive takes care of the upload.
+inbox = "%OneDrive%/Enregistrements soundcore"
+# Leave empty to write transcripts next to each audio file.
+transcripts = ""
+
+[recorder]
+enabled = true
+scan_interval_seconds = 20     # how often to look for the recorder
+scan_timeout_seconds = 8       # length of each Bluetooth scan
+idle_interval_seconds = 60     # pause after a check that found nothing new
+filename_prefix = "soundcore"  # files are named 2026-11-04_14-35-07_soundcore.ogg
+
+[transcription]
+enabled = true
+model = "medium"          # tiny / base / small / medium / large-v3 (downloaded on first use)
+device = "auto"           # auto, cpu or cuda
+compute_type = "default"  # int8 is a good choice on CPU
+language = ""             # "" = detect per file; "fr" or "en" to force
+beam_size = 5
+vad_filter = true
+rescan_interval_seconds = 120
+settle_seconds = 5
+write_markdown = true
+recursive = false
+
+[logging]
+level = "INFO"

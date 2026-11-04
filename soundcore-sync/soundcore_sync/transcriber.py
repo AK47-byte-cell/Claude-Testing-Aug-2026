@@ -1,0 +1,307 @@
+"""Transcription loop: watch the inbox, wait for files to settle, transcribe with faster-whisper."""
+from __future__ import annotations
+
+import hashlib
+import logging
+import os
+import threading
+import time
+from dataclasses import dataclass, field
+from datetime import datetime
+from pathlib import Path
+from typing import Protocol
+
+from .config import Config
+from .manifest import Manifest
+
+log = logging.getLogger(__name__)
+
+
+@dataclass
+class Segment:
+    start: float
+    end: float
+    text: str
+
+
+@dataclass
+class TranscriptResult:
+    language: str | None
+    language_probability: float | None
+    duration: float | None
+    segments: list[Segment] = field(default_factory=list)
+
+
+class TranscriptionEngine(Protocol):
+    name: str
+
+    def transcribe(self, path: Path) -> TranscriptResult: ...
+
+
+class WhisperEngine:
+    """faster-whisper backed engine; the model is loaded on first use."""
+
+    def __init__(self, model: str, device: str = "auto", compute_type: str = "default",
+                 language: str = "", beam_size: int = 5, vad_filter: bool = True):
+        self.name = model
+        self.device = device
+        self.compute_type = compute_type
+        self.language = language or None
+        self.beam_size = beam_size
+        self.vad_filter = vad_filter
+        self._model = None
+        self._lock = threading.Lock()
+
+    def _load(self):
+        with self._lock:
+            if self._model is None:
+                from faster_whisper import WhisperModel
+
+                log.info("Loading faster-whisper model '%s' (%s/%s)...", self.name, self.device, self.compute_type)
+                self._model = WhisperModel(self.name, device=self.device, compute_type=self.compute_type)
+                log.info("Model loaded")
+            return self._model
+
+    def transcribe(self, path: Path) -> TranscriptResult:
+        model = self._load()
+        segments, info = model.transcribe(
+            str(path), language=self.language, beam_size=self.beam_size, vad_filter=self.vad_filter,
+        )
+        result = TranscriptResult(
+            language=getattr(info, "language", None),
+            language_probability=getattr(info, "language_probability", None),
+            duration=getattr(info, "duration", None),
+        )
+        for seg in segments:  # generator: transcription happens here
+            result.segments.append(Segment(float(seg.start), float(seg.end), seg.text.strip()))
+        return result
+
+
+# ---- rendering ------------------------------------------------------------------------------
+
+def _hms(seconds: float) -> str:
+    seconds = int(seconds)
+    return f"{seconds // 3600:02d}:{seconds % 3600 // 60:02d}:{seconds % 60:02d}"
+
+
+def _duration_text(seconds: float | None) -> str:
+    if seconds is None:
+        return "inconnue"
+    s = round(seconds)
+    h, m, sec = s // 3600, s % 3600 // 60, s % 60
+    return f"{h} h {m:02d} min {sec:02d} s" if h else f"{m} min {sec:02d} s"
+
+
+def render_text(result: TranscriptResult, paragraph_gap: float = 2.0) -> str:
+    """Plain text; a new paragraph starts whenever the speech pauses for more than ``paragraph_gap`` s."""
+    paragraphs: list[list[str]] = [[]]
+    last_end = None
+    for seg in result.segments:
+        if not seg.text:
+            continue
+        if last_end is not None and seg.start - last_end > paragraph_gap and paragraphs[-1]:
+            paragraphs.append([])
+        paragraphs[-1].append(seg.text)
+        last_end = seg.end
+    return "\n\n".join(" ".join(p) for p in paragraphs if p) + "\n"
+
+
+def render_markdown(result: TranscriptResult, audio_path: Path, model_name: str,
+                    when: datetime | None = None) -> str:
+    when = when or datetime.now()
+    lang = result.language or "non détectée"
+    if result.language_probability:
+        lang += f" (probabilité {result.language_probability:.0%})"
+    lines = [
+        f"# Transcription : {audio_path.name}",
+        "",
+        f"Fichier audio : {audio_path.name}  ",
+        f"Durée : {_duration_text(result.duration)}  ",
+        f"Langue : {lang}  ",
+        f"Modèle : {model_name} (faster-whisper)  ",
+        f"Transcrit le : {when:%Y-%m-%d %H:%M}",
+        "",
+        "## Texte horodaté",
+        "",
+    ]
+    for seg in result.segments:
+        if seg.text:
+            lines.append(f"**[{_hms(seg.start)}]** {seg.text}")
+            lines.append("")
+    return "\n".join(lines)
+
+
+def sha256_file(path: Path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for block in iter(lambda: fh.read(1 << 20), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def write_text_atomic(path: Path, text: str) -> None:
+    tmp = path.with_name(path.name + ".part")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
+
+
+# ---- the loop -------------------------------------------------------------------------------
+
+@dataclass
+class _Seen:
+    size: int
+    mtime: float
+    first_seen: float
+
+
+class TranscribeLoop:
+    def __init__(self, cfg: Config, manifest: Manifest, engine: TranscriptionEngine):
+        self.cfg = cfg
+        self.tc = cfg.transcription
+        self.manifest = manifest
+        self.engine = engine
+        self.inbox = cfg.folders.inbox
+        self._seen: dict[Path, _Seen] = {}
+        self._wake = threading.Event()
+        self._lock = threading.Lock()
+
+    # ---- discovery ----------------------------------------------------------------------
+
+    def _is_audio(self, path: Path) -> bool:
+        return path.suffix.lower() in self.tc.extensions and not path.name.startswith((".", "~$"))
+
+    def scan_inbox(self) -> list[Path]:
+        if not self.inbox.is_dir():
+            return []
+        it = self.inbox.rglob("*") if self.tc.recursive else self.inbox.iterdir()
+        return sorted(p for p in it if p.is_file() and self._is_audio(p))
+
+    def transcript_paths(self, audio: Path) -> tuple[Path, Path]:
+        folder = self.cfg.folders.transcripts or audio.parent
+        return folder / (audio.stem + ".txt"), folder / (audio.stem + ".md")
+
+    def is_ready(self, path: Path, now: float | None = None) -> bool:
+        """True once the file has stopped changing and can actually be opened.
+
+        OneDrive writes files progressively and may keep them as online-only placeholders;
+        opening the file forces it to be downloaded.
+        """
+        now = now or time.time()
+        try:
+            st = path.stat()
+        except OSError:
+            self._seen.pop(path, None)
+            return False
+        if st.st_size <= 0:
+            return False
+        prev = self._seen.get(path)
+        if prev is None or prev.size != st.st_size or abs(prev.mtime - st.st_mtime) > 0.01:
+            self._seen[path] = _Seen(st.st_size, st.st_mtime, now)
+            return False
+        settle = self.tc.settle_seconds
+        if now - prev.first_seen < settle or now - st.st_mtime < settle:
+            return False
+        try:
+            with open(path, "rb") as fh:
+                fh.read(4096)
+        except OSError as exc:
+            log.debug("%s not readable yet: %s", path.name, exc)
+            return False
+        return True
+
+    # ---- work ---------------------------------------------------------------------------
+
+    def pending(self) -> list[Path]:
+        out = []
+        for path in self.scan_inbox():
+            st = path.stat()
+            if not self.manifest.needs_transcription(path, st.st_size, st.st_mtime, self.tc.max_attempts):
+                continue
+            txt, _md = self.transcript_paths(path)
+            if txt.is_file() and self.manifest.transcript_record(path) is None:
+                # Transcribed before this tool existed: adopt it rather than redo it.
+                self.manifest.mark_transcribed(path, st.st_size, st.st_mtime, "", txt, "pre-existing", None)
+                continue
+            out.append(path)
+        return out
+
+    def process_file(self, path: Path) -> Path | None:
+        st = path.stat()
+        txt, md = self.transcript_paths(path)
+        log.info("Transcribing %s (%.1f MB)", path.name, st.st_size / 1e6)
+        started = time.monotonic()
+        try:
+            result = self.engine.transcribe(path)
+            txt.parent.mkdir(parents=True, exist_ok=True)
+            write_text_atomic(txt, render_text(result))
+            if self.tc.write_markdown:
+                write_text_atomic(md, render_markdown(result, path, self.engine.name))
+        except Exception as exc:
+            attempts = self.manifest.mark_failed(path, st.st_size, st.st_mtime, f"{type(exc).__name__}: {exc}")
+            log.exception("Transcription of %s failed (attempt %d/%d): %s", path.name, attempts,
+                          self.tc.max_attempts, exc)
+            return None
+        self.manifest.mark_transcribed(path, st.st_size, st.st_mtime, sha256_file(path), txt,
+                                       self.engine.name, result.language)
+        log.info("Transcript written: %s (%s, %.0f s)", txt.name, result.language, time.monotonic() - started)
+        return txt
+
+    def process_pending(self) -> int:
+        """One pass: transcribe every settled file that still needs it. Returns how many were done."""
+        done = 0
+        with self._lock:
+            for path in self.pending():
+                if not self.is_ready(path):
+                    continue
+                if self.process_file(path) is not None:
+                    done += 1
+        return done
+
+    def has_unsettled(self) -> bool:
+        return any(not self.is_ready(p) for p in self.pending())
+
+    # ---- loop ---------------------------------------------------------------------------
+
+    def notify(self, path: Path | None = None) -> None:
+        """Called by the folder watcher when something changes."""
+        self._wake.set()
+
+    def run_forever(self, stop: threading.Event) -> None:
+        observer = self._start_watcher()
+        log.info("Transcription loop started: watching %s", self.inbox)
+        try:
+            while not stop.is_set():
+                try:
+                    self.process_pending()
+                except Exception:
+                    log.exception("Transcription pass failed")
+                timeout = self.tc.settle_seconds if self.has_unsettled() else self.tc.rescan_interval_seconds
+                self._wake.wait(timeout)
+                self._wake.clear()
+        finally:
+            if observer is not None:
+                observer.stop()
+                observer.join(timeout=5)
+            log.info("Transcription loop stopped")
+
+    def _start_watcher(self):
+        try:
+            from watchdog.events import FileSystemEventHandler
+            from watchdog.observers import Observer
+        except ImportError:
+            log.warning("watchdog not installed; relying on periodic rescans only")
+            return None
+
+        loop = self
+
+        class Handler(FileSystemEventHandler):
+            def on_any_event(self, event):
+                if not event.is_directory:
+                    loop.notify(Path(getattr(event, "dest_path", None) or event.src_path))
+
+        self.inbox.mkdir(parents=True, exist_ok=True)
+        observer = Observer()
+        observer.schedule(Handler(), str(self.inbox), recursive=self.tc.recursive)
+        observer.daemon = True
+        observer.start()
+        return observer
