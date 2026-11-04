@@ -59,7 +59,9 @@ down.
    ```
 
 3. Open `%USERPROFILE%\.soundcore-sync\config.toml` in Notepad and set `inbox` to the OneDrive folder
-   you want (the default is `%OneDrive%\Enregistrements soundcore`). Pick the model: `medium` is a
+   you want. The default is `%OneDriveCommercial%\Dictation\Import`, the "Dictation > Import" folder of the
+   work OneDrive (shown as "Alexandra - GESTION GASLAW INC" in Explorer); `echo $env:OneDriveCommercial` in
+   PowerShell prints the real path. Pick the model: `medium` is a
    good balance on a CPU; `large-v3` is better and slower; add `compute_type = "int8"` on a laptop
    without a GPU. Leave `language = ""` and each file is detected as French or English on its own.
 4. Take the recorder out of its case, close the soundcore app on the phone, and check the link:

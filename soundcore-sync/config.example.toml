@@ -4,7 +4,9 @@
 [folders]
 # Where recordings are written by the Bluetooth puller AND watched for transcription.
 # Point this at a folder inside OneDrive and OneDrive takes care of the upload.
-inbox = "%OneDrive%/Enregistrements soundcore"
+# %OneDriveCommercial% is the work OneDrive ("Alexandra - GESTION GASLAW INC" in Explorer).
+# Check the real path in PowerShell with:  echo $env:OneDriveCommercial
+inbox = "%OneDriveCommercial%/Dictation/Import"
 # Leave empty to write transcripts next to each audio file.
 transcripts = ""
 

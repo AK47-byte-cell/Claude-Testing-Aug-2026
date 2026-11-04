@@ -26,11 +26,11 @@ def default_inbox() -> Path:
     for var in ("OneDriveCommercial", "OneDrive", "OneDriveConsumer"):
         root = os.environ.get(var)
         if root and Path(root).is_dir():
-            return Path(root) / "Enregistrements soundcore"
+            return Path(root) / "Dictation" / "Import"
     candidate = Path.home() / "OneDrive"
     if candidate.is_dir():
-        return candidate / "Enregistrements soundcore"
-    return Path.home() / "Enregistrements soundcore"
+        return candidate / "Dictation" / "Import"
+    return Path.home() / "Dictation" / "Import"
 
 
 @dataclass
@@ -157,7 +157,9 @@ EXAMPLE_CONFIG = """# soundcore-sync configuration
 [folders]
 # Where recordings are written by the Bluetooth puller AND watched for transcription.
 # Point this at a folder inside OneDrive and OneDrive takes care of the upload.
-inbox = "%OneDrive%/Enregistrements soundcore"
+# %OneDriveCommercial% is the work OneDrive ("Alexandra - GESTION GASLAW INC" in Explorer).
+# Check the real path in PowerShell with:  echo $env:OneDriveCommercial
+inbox = "%OneDriveCommercial%/Dictation/Import"
 # Leave empty to write transcripts next to each audio file.
 transcripts = ""
 
