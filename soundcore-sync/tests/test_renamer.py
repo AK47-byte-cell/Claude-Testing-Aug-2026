@@ -103,3 +103,20 @@ def test_rename_set_moves_companions_and_avoids_collisions(tmp_path):
     assert moves[audio] == tmp_path / "new (2).ogg"
     assert (tmp_path / "new (2).txt").read_text() == "t" and (tmp_path / "new (2).md").is_file()
     assert not audio.exists()
+
+
+def test_build_stem_with_subject_and_pattern():
+    assert build_stem("2026-11-05_14-35-07_soundcore", "1234-56", "Tremblay c. XYZ", "Rencontre avec M. Tremblay") == \
+        "2026-11-05_14-35 - 1234-56 - Tremblay c. XYZ - Rencontre avec M. Tremblay"
+    assert build_stem("2026-11-05_14-35-07_soundcore", None, None, "Note sur le rapport") == \
+        "2026-11-05_14-35 - Note sur le rapport"
+    assert build_stem("a", "1234-56", "L", "S", pattern="{date} - {subject} - {number}") == "a - S - 1234-56"
+
+
+def test_build_stem_shortens_subject_then_label():
+    stem = build_stem("2026-11-05_14-35-07_soundcore", "1234-56", "Client " + "x" * 40, "Sujet " + "y" * 60,
+                      max_len=90)
+    assert len(stem) <= 90
+    assert stem.startswith("2026-11-05_14-35 - 1234-56 - Client xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx - Sujet")
+    stem = build_stem("2026-11-05_14-35-07_soundcore", "1234-56", "Client " + "x" * 80, "S", max_len=60)
+    assert len(stem) <= 60 and stem.startswith("2026-11-05_14-35 - 1234-56 - Client")

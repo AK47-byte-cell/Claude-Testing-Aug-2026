@@ -222,3 +222,74 @@ def test_no_number_leaves_file_alone(tmp_path):
     loop.is_ready(audio)
     loop.process_pending()
     assert audio.is_file() and loop.manifest.pending_proposals() == []
+
+
+# ---- subject titles from the local model ----------------------------------------------------
+
+class StubSubject:
+    def __init__(self, title="Rencontre avec M. Tremblay"):
+        self._title = title
+        self.calls = []
+
+    def title(self, text, language):
+        self.calls.append((text, language))
+        return self._title
+
+
+def test_number_and_subject_combined(tmp_path):
+    loop = make_loop(tmp_path, SpokenEngine("Dossier 1234-56. Rencontre avec monsieur Tremblay."))
+    loop.cfg.rename.matters_source = matters_folder(tmp_path)
+    loop.subject = StubSubject()
+    audio = loop.inbox / "2026-11-05_14-35-07_soundcore.ogg"
+    audio.write_bytes(b"x" * 10)
+    loop.is_ready(audio)
+    loop.process_pending()
+    new = loop.inbox / "2026-11-05_14-35 - 1234-56 - Tremblay c. Assurances XYZ - Rencontre avec M. Tremblay.ogg"
+    assert new.is_file() and new.with_suffix(".txt").is_file()
+    assert loop.subject.calls[0][1] == "fr"
+
+
+def test_subject_only_rename_and_later_review_keeps_subject(tmp_path):
+    loop = make_loop(tmp_path, SpokenEngine("Appel de monsieur Gagnon concernant Beaulieu."))
+    loop.cfg.rename.matters_source = matters_folder(tmp_path)
+    loop.subject = StubSubject("Appel de M. Gagnon")
+    audio = loop.inbox / "2026-11-05_14-35-07_soundcore.ogg"
+    audio.write_bytes(b"x" * 10)
+    loop.is_ready(audio)
+    loop.process_pending()
+    renamed = loop.inbox / "2026-11-05_14-35 - Appel de M. Gagnon.ogg"
+    assert renamed.is_file()
+    rows = loop.manifest.pending_proposals()
+    assert len(rows) == 1 and rows[0]["path"] == str(renamed) and rows[0]["subject"] == "Appel de M. Gagnon"
+    # accepting the proposal later rebuilds the name from the original, keeping the subject
+    from soundcore_sync.renamer import Proposal
+    loop.apply_rename(renamed, Proposal(rows[0]["file_number"], rows[0]["label"], "review", "high"), rows[0]["subject"])
+    final = loop.inbox / "2026-11-05_14-35 - 2345-67 - Gagnon c. Beaulieu - Appel de M. Gagnon.ogg"
+    assert final.is_file() and not renamed.exists()
+    assert loop.manifest.original_name(final) == audio
+
+
+def test_subject_only_can_be_disabled(tmp_path):
+    loop = make_loop(tmp_path, SpokenEngine("Note générale."))
+    loop.cfg.rename.subject_only = False
+    loop.subject = StubSubject("Note")
+    audio = loop.inbox / "a.ogg"
+    audio.write_bytes(b"x" * 10)
+    loop.is_ready(audio)
+    loop.process_pending()
+    assert audio.is_file()
+
+
+def test_subject_engine_failure_falls_back(tmp_path):
+    class Broken:
+        def title(self, text, language):
+            raise RuntimeError("ollama exploded")
+
+    loop = make_loop(tmp_path, SpokenEngine("Dossier 1234-56."))
+    loop.cfg.rename.matters_source = matters_folder(tmp_path)
+    loop.subject = Broken()
+    audio = loop.inbox / "a.ogg"
+    audio.write_bytes(b"x" * 10)
+    loop.is_ready(audio)
+    loop.process_pending()
+    assert (loop.inbox / "a - 1234-56 - Tremblay c. Assurances XYZ.ogg").is_file()

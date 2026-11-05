@@ -230,17 +230,36 @@ def sanitise(part: str, max_len: int = 80) -> str:
     return part[:max_len].rstrip(" .")
 
 
-def build_stem(original_stem: str, number: str | None, label: str | None, *, max_len: int = 120) -> str:
+DEFAULT_PATTERN = "{date} - {number} - {label} - {subject}"
+
+
+def build_stem(original_stem: str, number: str | None, label: str | None, subject: str | None = None, *,
+               pattern: str = DEFAULT_PATTERN, max_len: int = 120) -> str:
+    """Assemble the new file stem. Missing parts are dropped; the subject, then the label, are
+    shortened if the result exceeds ``max_len``."""
     m = DATE_STEM_RE.match(original_stem)
-    prefix = m.group(1) if m else sanitise(original_stem)
-    parts = [prefix]
-    if number:
-        parts.append(number)
-    if label:
-        parts.append(sanitise(label))
-    stem = " - ".join(parts)
+    values = {
+        "date": m.group(1) if m else sanitise(original_stem),
+        "number": number or "",
+        "label": sanitise(label) if label else "",
+        "subject": sanitise(subject) if subject else "",
+    }
+    order = [f for f in re.findall(r"\{(\w+)\}", pattern) if f in values]
+    if "date" not in order:
+        order.insert(0, "date")
+
+    def assemble() -> str:
+        return " - ".join(values[f] for f in order if values[f])
+
+    stem = assemble()
+    for part in ("subject", "label"):
+        if len(stem) <= max_len:
+            break
+        excess = len(stem) - max_len
+        values[part] = values[part][: max(0, len(values[part]) - excess - 1)].rstrip(" ,.;:-")
+        stem = assemble()
     if len(stem) > max_len:
-        stem = stem[:max_len].rstrip(" -.")
+        stem = stem[:max_len].rstrip(" -.,")
     return stem
 
 

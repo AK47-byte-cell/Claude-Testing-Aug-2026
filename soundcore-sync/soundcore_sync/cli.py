@@ -43,6 +43,34 @@ def build_engine(cfg: Config):
                          tc.initial_prompt, tc.condition_on_previous_text)
 
 
+def build_subject_engine(cfg: Config):
+    sc = cfg.subject
+    if not sc.enabled:
+        return None
+    if sc.backend != "ollama":
+        log.warning("Unknown subject backend %r; titles disabled", sc.backend)
+        return None
+    from .subject import OllamaSubjectEngine
+
+    return OllamaSubjectEngine(sc.model, sc.url, sc.max_chars, sc.timeout_seconds, sc.max_words)
+
+
+def cmd_subject(cfg: Config, args) -> int:
+    """Test the local title generation on a transcript file or a piece of text."""
+    engine = build_subject_engine(cfg)
+    if engine is None:
+        print("Subject titles are disabled in the config.")
+        return 1
+    text = Path(args.file).read_text(encoding="utf-8") if args.file else args.text
+    if not text:
+        print("Give --file transcript.txt or --text \"...\"")
+        return 2
+    print(f"Asking {cfg.subject.model} at {cfg.subject.url} ...")
+    title = engine.title(text, None)
+    print(f"Title: {title!r}" if title else "No title (is Ollama running and the model pulled?)")
+    return 0 if title else 1
+
+
 def cmd_init(cfg: Config, args) -> int:
     path = Config.default_path()
     if path.exists() and not args.force:
@@ -90,7 +118,7 @@ def cmd_transcribe(cfg: Config, args) -> int:
     from .transcriber import TranscribeLoop
 
     manifest = Manifest(cfg.folders.state_dir / "manifest.sqlite")
-    loop = TranscribeLoop(cfg, manifest, build_engine(cfg))
+    loop = TranscribeLoop(cfg, manifest, build_engine(cfg), build_subject_engine(cfg))
     if args.file:
         out = loop.process_file(Path(args.file))
         return 0 if out else 1
@@ -181,7 +209,7 @@ def cmd_review(cfg: Config, args) -> int:
             number = answer
             m = loop.matters().get(number)
             label = m.label if m else None
-        new_txt = loop.apply_rename(path, Proposal(number, label, "review", "high"))
+        new_txt = loop.apply_rename(path, Proposal(number, label, "review", "high"), row["subject"])
         manifest.set_proposal_status(path, "accepted")
         print(f"  -> {new_txt.name if new_txt else 'renamed'}")
     return 0
@@ -220,7 +248,7 @@ def cmd_run(cfg: Config, args) -> int:
         threads.append(threading.Thread(target=Puller(cfg, manifest).run_forever, args=(stop,),
                                         name="puller", daemon=True))
     if cfg.transcription.enabled and not args.no_transcribe:
-        loop = TranscribeLoop(cfg, manifest, build_engine(cfg))
+        loop = TranscribeLoop(cfg, manifest, build_engine(cfg), build_subject_engine(cfg))
         threads.append(threading.Thread(target=loop.run_forever, args=(stop,), name="transcriber", daemon=True))
     if not threads:
         print("Nothing enabled; check the config.")
@@ -269,6 +297,10 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("matters", help="show the matter list; --text to test the matching")
     p.add_argument("--text", help="transcript text to test against the list")
     p.set_defaults(func=cmd_matters)
+    p = sub.add_parser("subject", help="test the local title generation (Ollama)")
+    p.add_argument("--file", help="a transcript .txt")
+    p.add_argument("--text", help="text to title")
+    p.set_defaults(func=cmd_subject)
     p = sub.add_parser("review", help="accept or reject pending rename proposals")
     p.add_argument("--accept-all", action="store_true")
     p.add_argument("--reject-all", action="store_true")

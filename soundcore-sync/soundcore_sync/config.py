@@ -88,6 +88,19 @@ class RenameConfig:
     margin: float = 1.5                   # best match must beat the runner-up by this factor
     max_length: int = 120
     companions: tuple[str, ...] = (".txt", ".md")
+    pattern: str = "{date} - {number} - {label} - {subject}"   # missing parts are dropped
+    subject_only: bool = True             # rename with just the subject when no file number was found
+
+
+@dataclass
+class SubjectConfig:
+    enabled: bool = True
+    backend: str = "ollama"               # only "ollama" for now
+    model: str = "qwen2.5:3b"             # small, bilingual, fine on a CPU
+    url: str = "http://127.0.0.1:11434"
+    max_chars: int = 3000                 # how much of the transcript the model sees
+    timeout_seconds: float = 120.0
+    max_words: int = 8
 
 
 @dataclass
@@ -102,6 +115,7 @@ class Config:
     recorder: RecorderConfig = field(default_factory=RecorderConfig)
     transcription: TranscriptionConfig = field(default_factory=TranscriptionConfig)
     rename: RenameConfig = field(default_factory=RenameConfig)
+    subject: SubjectConfig = field(default_factory=SubjectConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     source: Path | None = None
 
@@ -148,6 +162,7 @@ class Config:
         _apply(cfg.rename, rename)
         if cfg.rename.mode not in ("auto", "propose", "off"):
             raise ValueError("rename.mode must be auto, propose or off")
+        _apply(cfg.subject, data.get("subject", {}))
         log = data.get("logging", {})
         if log.get("file"):
             cfg.logging.file = expand(log["file"])
@@ -226,6 +241,16 @@ mode = "auto"               # auto = rename when confident; propose = only recor
 # Folder whose sub-folders are named "1234-56 Client name" (or a CSV with one file per line).
 matters_source = "%OneDriveCommercial%/Dossiers"
 auto_on_name_match = false  # true = also rename on a confident name match without a spoken number
+pattern = "{date} - {number} - {label} - {subject}"
+subject_only = true         # rename with just the subject when no file number was found
+
+[subject]
+# Short title ("Rencontre avec M. Tremblay, rapport d'expert") produced ON THIS LAPTOP by a small
+# language model served by Ollama (https://ollama.com). Install Ollama, then: ollama pull qwen2.5:3b
+# If Ollama is not running, titles are skipped and names use the client name only.
+enabled = true
+model = "qwen2.5:3b"
+max_words = 8
 
 [logging]
 level = "INFO"

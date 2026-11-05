@@ -34,8 +34,14 @@ script, wait, fetch the transcript. After: record, put the recorder on the desk,
   sub-folders start with the file number, or a CSV). If you did not say the number, the names in the
   recording are matched against that list; a confident, unambiguous match is recorded as a proposal
   (or applied, with `auto_on_name_match = true`), and `soundcore-sync review` lets you accept it, type
-  another number, or reject it. Files with no usable clue keep their date name. The original name is
-  kept, and `soundcore-sync undo "<file>"` restores it. Nothing is sent to any outside service.
+  another number, or reject it. The original name is kept, and `soundcore-sync undo "<file>"` restores
+  it. Nothing is sent to any outside service.
+* **Subject titles, on the laptop.** With [Ollama](https://ollama.com) installed, a small language
+  model running on the laptop reads the start of the transcript and adds a short title, so the name
+  becomes `2026-11-05_14-35 - 1234-56 - Tremblay c. Assurances XYZ - Rencontre avec M. Tremblay.ogg`.
+  A recording with a title but no file number is named `2026-11-05_14-35 - Rencontre avec M. Tremblay.ogg`
+  and still goes to `review` if the names suggested a file. The transcript never leaves the machine.
+  Without Ollama, titles are skipped and the names use the client name only.
 * A small database in `~/.soundcore-sync/` remembers what was pulled, transcribed and renamed, so
   nothing is done twice, even after a restart or a OneDrive re-sync.
 
@@ -97,6 +103,12 @@ down.
    `install\windows\uninstall-task.ps1` removes it. The log is at
    `%USERPROFILE%\.soundcore-sync\soundcore-sync.log`.
 
+7. Optional, for the subject titles: install Ollama for Windows from <https://ollama.com/download>,
+   then in PowerShell run `ollama pull qwen2.5:3b` once (about 2 GB). Ollama starts with Windows and
+   serves the model locally; `.venv\Scripts\soundcore-sync subject --text "Bonjour, ..."` checks
+   that it answers. A title takes a few seconds to a minute on a CPU. `qwen2.5:7b` gives better
+   titles if the laptop has 16 GB of memory or more.
+
 macOS: same steps with `python3 -m venv .venv` and `.venv/bin/...`; copy
 `install/macos/com.soundcore-sync.plist` to `~/Library/LaunchAgents/` (edit the two paths) and grant
 Bluetooth access to the Python binary when asked. Linux: `install/linux/soundcore-sync.service` as a
@@ -123,6 +135,7 @@ community reverse-engineering and a different firmware may shift them.
 | `soundcore-sync review` | Accept, correct or reject pending rename proposals (`--accept-all`, `--reject-all`). |
 | `soundcore-sync undo "<file>"` | Give a renamed recording and its transcript their original name back. |
 | `soundcore-sync matters` | Show the file list as read from OneDrive; `--text "..."` tests the matching on a sample transcript. |
+| `soundcore-sync subject --file X.txt` | Ask the local model for a title for one transcript (or `--text "..."`). |
 | `soundcore-sync init` | Write the config file and create the folders. |
 
 All commands take `--config PATH` and `-v`.
@@ -142,6 +155,9 @@ See `config.example.toml`. The important ones:
 | `rename.matters_source` | Your list of files: a folder of "1234-56 Client" sub-folders or a CSV. Without it only spoken numbers can be used. |
 | `rename.mode` | `auto` renames when confident, `propose` only records proposals, `off`. |
 | `rename.auto_on_name_match` | Also rename automatically when only the names matched (default: propose). |
+| `rename.pattern` | Order of the name parts; missing parts are dropped. Default `{date} - {number} - {label} - {subject}`. |
+| `rename.subject_only` | Rename with just the title when no file number was found (default: yes). |
+| `subject.enabled` / `model` | Local title generation through Ollama; `qwen2.5:3b` by default. |
 
 ## Development
 
@@ -153,7 +169,7 @@ pytest
 The tests cover configuration, the manifest, the frame builder and list parser, the key wrap and
 chunk decryption, the Ogg/Opus container, a simulated end-to-end download through the client, the
 transcription loop with a stub engine, the matter list, spoken-number detection (digits and words,
-French and English) and the renaming rules. They need no Bluetooth hardware and no model download.
+French and English), the renaming rules and the local title engine (against a fake Ollama). They need no Bluetooth hardware and no model download.
 
 ## Licence and credits
 

@@ -48,6 +48,7 @@ class Manifest:
                     label            TEXT,
                     method           TEXT,
                     confidence       TEXT,
+                    subject          TEXT,
                     renamed_at       TEXT NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS proposals (
@@ -58,6 +59,7 @@ class Manifest:
                     confidence       TEXT,
                     note             TEXT,
                     candidates       TEXT,
+                    subject          TEXT,
                     status           TEXT NOT NULL,
                     created_at       TEXT NOT NULL
                 );
@@ -161,7 +163,7 @@ class Manifest:
     # ---- renames and proposals ---------------------------------------------------------------
 
     def record_rename(self, original: Path, current: Path, number: str | None, label: str | None,
-                      method: str, confidence: str) -> None:
+                      method: str, confidence: str, subject: str | None = None) -> None:
         with self._lock:
             prior = self._db.execute("SELECT original_path FROM renames WHERE current_path=?",
                                      (str(original),)).fetchone()
@@ -169,8 +171,8 @@ class Manifest:
             self._db.execute("DELETE FROM renames WHERE current_path=?", (str(original),))
             self._db.execute(
                 "INSERT OR REPLACE INTO renames (current_path, original_path, file_number, label, method, "
-                "confidence, renamed_at) VALUES (?,?,?,?,?,?,?)",
-                (str(current), root, number, label, method, confidence, _now()))
+                "confidence, subject, renamed_at) VALUES (?,?,?,?,?,?,?,?)",
+                (str(current), root, number, label, method, confidence, subject, _now()))
             self._db.execute("DELETE FROM proposals WHERE path=?", (str(original),))
             self._db.commit()
 
@@ -186,12 +188,12 @@ class Manifest:
             self._db.commit()
 
     def record_proposal(self, path: Path, number: str | None, label: str | None, method: str,
-                        confidence: str, note: str, candidates: str) -> None:
+                        confidence: str, note: str, candidates: str, subject: str | None = None) -> None:
         with self._lock:
             self._db.execute(
                 "INSERT OR REPLACE INTO proposals (path, file_number, label, method, confidence, note, "
-                "candidates, status, created_at) VALUES (?,?,?,?,?,?,?,'pending',?)",
-                (str(path), number, label, method, confidence, note, candidates, _now()))
+                "candidates, subject, status, created_at) VALUES (?,?,?,?,?,?,?,?,'pending',?)",
+                (str(path), number, label, method, confidence, note, candidates, subject, _now()))
             self._db.commit()
 
     def pending_proposals(self) -> list[sqlite3.Row]:

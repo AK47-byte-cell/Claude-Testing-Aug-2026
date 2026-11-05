@@ -15,6 +15,7 @@ from .config import Config
 from .manifest import Manifest
 from .matters import MatterIndex
 from .renamer import Proposal, build_stem, propose, rename_set
+from .subject import SubjectEngine
 
 log = logging.getLogger(__name__)
 
@@ -193,11 +194,13 @@ class _Seen:
 
 
 class TranscribeLoop:
-    def __init__(self, cfg: Config, manifest: Manifest, engine: TranscriptionEngine):
+    def __init__(self, cfg: Config, manifest: Manifest, engine: TranscriptionEngine,
+                 subject: SubjectEngine | None = None):
         self.cfg = cfg
         self.tc = cfg.transcription
         self.manifest = manifest
         self.engine = engine
+        self.subject = subject
         self.inbox = cfg.folders.inbox
         self._seen: dict[Path, _Seen] = {}
         self._wake = threading.Event()
@@ -285,7 +288,7 @@ class TranscribeLoop:
                                        self.engine.name, result.language)
         log.info("Transcript written: %s (%s, %.0f s)", txt.name, result.language, time.monotonic() - started)
         try:
-            txt = self.maybe_rename(path, txt, render_text(result)) or txt
+            txt = self.maybe_rename(path, txt, render_text(result), result.language) or txt
         except Exception:
             log.exception("Renaming of %s failed; the file keeps its name", path.name)
         return txt
@@ -302,7 +305,7 @@ class TranscribeLoop:
                 log.warning("No file numbers found in the matter list at %s", rc.matters_source)
         return self._matters
 
-    def maybe_rename(self, audio: Path, txt: Path, text: str) -> Path | None:
+    def maybe_rename(self, audio: Path, txt: Path, text: str, language: str | None = None) -> Path | None:
         """Rename when confident; otherwise record a proposal for `soundcore-sync review`."""
         rc = self.cfg.rename
         if not rc.enabled or rc.mode == "off":
@@ -310,23 +313,45 @@ class TranscribeLoop:
         if self.manifest.original_name(audio) is not None:
             return None  # already renamed once
         prop = propose(text, self.matters(), min_score=rc.min_score, margin=rc.margin)
-        if not prop.found:
-            log.info("No file number found for %s", audio.name)
-            return None
-        confident = prop.confidence == "high" or (prop.confidence == "medium" and (
-            prop.method == "spoken" or rc.auto_on_name_match))
+        subject = None
+        if self.subject is not None and self.cfg.subject.enabled:
+            try:
+                subject = self.subject.title(text, language)
+            except Exception:
+                log.exception("Subject title failed for %s", audio.name)
+        confident = prop.found and (prop.confidence == "high" or (prop.confidence == "medium" and (
+            prop.method == "spoken" or rc.auto_on_name_match)))
+        new_txt = None
+        current = audio
         if rc.mode == "auto" and confident:
-            return self.apply_rename(audio, prop)
-        self.manifest.record_proposal(audio, prop.number, prop.label, prop.method, prop.confidence, prop.note,
-                                      "; ".join(f"{c.matter.number} {c.matter.label} ({c.score:.1f})"
-                                                for c in prop.candidates))
-        log.info("Proposed for %s: %s %s (%s, %s); run `soundcore-sync review`",
-                 audio.name, prop.number, prop.label or "", prop.method, prop.confidence)
-        return None
+            new_txt = self.apply_rename(audio, prop, subject)
+            return new_txt
+        if rc.mode == "auto" and subject and rc.subject_only:
+            new_txt = self.apply_rename(audio, Proposal(None, None, "subject", "medium"), subject)
+            current = self._current_audio(audio, new_txt)
+        if prop.found:
+            self.manifest.record_proposal(current, prop.number, prop.label, prop.method, prop.confidence, prop.note,
+                                          "; ".join(f"{c.matter.number} {c.matter.label} ({c.score:.1f})"
+                                                    for c in prop.candidates), subject)
+            log.info("Proposed for %s: %s %s (%s, %s); run `soundcore-sync review`",
+                     current.name, prop.number, prop.label or "", prop.method, prop.confidence)
+        elif new_txt is None:
+            log.info("No file number or subject found for %s", audio.name)
+        return new_txt
 
-    def apply_rename(self, audio: Path, prop: Proposal) -> Path | None:
+    def _current_audio(self, audio: Path, new_txt: Path | None) -> Path:
+        if new_txt is None:
+            return audio
+        return audio.with_name(new_txt.stem + audio.suffix)
+
+    def apply_rename(self, audio: Path, prop: Proposal, subject: str | None = None) -> Path | None:
         rc = self.cfg.rename
-        new_stem = build_stem(audio.stem, prop.number, prop.label, max_len=rc.max_length)
+        base_stem = audio.stem
+        prior = self.manifest.original_name(audio)
+        if prior is not None:
+            base_stem = prior.stem  # rebuild from the original name, not from a previous rename
+        new_stem = build_stem(base_stem, prop.number, prop.label, subject, pattern=rc.pattern,
+                              max_len=rc.max_length)
         if new_stem == audio.stem:
             return None
         if self.cfg.folders.transcripts and self.cfg.folders.transcripts != audio.parent:
@@ -344,7 +369,8 @@ class TranscribeLoop:
             new_audio = moves[audio]
         new_txt = next((n for o, n in moves.items() if n.suffix == ".txt"), None)
         self.manifest.move_transcript(audio, new_audio, new_txt)
-        self.manifest.record_rename(audio, new_audio, prop.number, prop.label, prop.method, prop.confidence)
+        self.manifest.record_rename(audio, new_audio, prop.number, prop.label, prop.method, prop.confidence,
+                                    subject)
         log.info("Renamed %s -> %s (%s, %s)", audio.name, new_audio.name, prop.method, prop.confidence)
         return new_txt
 
