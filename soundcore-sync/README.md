@@ -22,8 +22,11 @@ script, wait, fetch the transcript. After: record, put the recorder on the desk,
   `2026-11-04_14-35-07_soundcore.ogg`. Nothing is ever deleted from the recorder.
 * **Transcriber.** The same program watches the inbox folder. Every new audio file (from the
   recorder or dropped there by any other means) is transcribed once it has stopped changing, and
-  `name.txt` (plain paragraphs) and `name.md` (timestamped) are written beside it. Files that already
-  have a `.txt` are left alone, so an existing backlog is not redone.
+  `name.txt` is written beside it with the same settings and clean-up as the previous batch script
+  (medium model on CPU in int8, beam size 6, voice-activity filter, the bilingual legal-dictation
+  prompt, no conditioning on previous text, punctuation clean-up, paragraphs of about 900
+  characters). Set `write_markdown = true` to also get a timestamped `name.md`. Files that already
+  have a `.txt` are left alone, so the existing backlog is not redone.
 * A small database in `~/.soundcore-sync/` remembers what was pulled and transcribed, so nothing is
   done twice, even after a restart or a OneDrive re-sync.
 
@@ -60,10 +63,10 @@ down.
 
 3. Open `%USERPROFILE%\.soundcore-sync\config.toml` in Notepad and set `inbox` to the OneDrive folder
    you want. The default is `%OneDriveCommercial%\Dictation\Import`, the "Dictation > Import" folder of the
-   work OneDrive (shown as "Alexandra - GESTION GASLAW INC" in Explorer); `echo $env:OneDriveCommercial` in
-   PowerShell prints the real path. Pick the model: `medium` is a
-   good balance on a CPU; `large-v3` is better and slower; add `compute_type = "int8"` on a laptop
-   without a GPU. Leave `language = ""` and each file is detected as French or English on its own.
+   work OneDrive (shown as "Alexandra - GESTION GASLAW INC" in Explorer, and
+   `C:\Users\Akallos\OneDrive - GESTION GASLAW INC\Dictation\Import` on disk). The transcription
+   settings default to those of the previous script; `large-v3` is more accurate and slower. Leave
+   `language = ""` and each file is detected as French or English on its own.
 4. Take the recorder out of its case, close the soundcore app on the phone, and check the link:
 
    ```powershell

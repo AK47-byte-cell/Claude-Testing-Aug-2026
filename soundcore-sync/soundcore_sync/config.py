@@ -9,6 +9,14 @@ from typing import Any
 
 AUDIO_EXTENSIONS = (".ogg", ".opus", ".mp3", ".m4a", ".wav", ".flac", ".webm", ".aac", ".wma", ".mp4")
 
+DEFAULT_INITIAL_PROMPT = (
+    "This is bilingual English-French legal dictation. "
+    "Preserve each language as spoken. "
+    "The dictation may contain legal terminology, case names, "
+    "company names, citations, and Latin expressions. "
+    "Use correct punctuation and capitalization."
+)
+
 
 def expand(value: str | None) -> Path | None:
     """Expand ``~`` and environment variables such as ``%OneDrive%`` / ``$HOME``."""
@@ -54,14 +62,17 @@ class RecorderConfig:
 class TranscriptionConfig:
     enabled: bool = True
     model: str = "medium"                 # tiny, base, small, medium, large-v3, distil-large-v3 ...
-    device: str = "auto"                  # auto, cpu, cuda
-    compute_type: str = "default"         # default, int8, float16 ...
+    device: str = "cpu"                   # auto, cpu, cuda
+    compute_type: str = "int8"            # default, int8, float16 ...
     language: str = ""                    # "" = auto-detect per file; otherwise "fr" or "en"
-    beam_size: int = 5
+    beam_size: int = 6
     vad_filter: bool = True
-    rescan_interval_seconds: float = 120.0
+    initial_prompt: str = DEFAULT_INITIAL_PROMPT
+    condition_on_previous_text: bool = False
+    paragraph_chars: int = 900            # split paragraphs longer than this (0 = never)
+    rescan_interval_seconds: float = 30.0
     settle_seconds: float = 5.0           # file must be unchanged for this long before it is used
-    write_markdown: bool = True
+    write_markdown: bool = False          # also write a timestamped .md next to the .txt
     recursive: bool = False
     extensions: tuple[str, ...] = AUDIO_EXTENSIONS
     max_attempts: int = 3
@@ -173,13 +184,16 @@ filename_prefix = "soundcore"
 [transcription]
 enabled = true
 model = "medium"          # tiny / base / small / medium / large-v3 (first run downloads it)
-device = "auto"           # auto, cpu or cuda
-compute_type = "default"  # int8 is a good choice on CPU
+device = "cpu"            # cpu, cuda or auto
+compute_type = "int8"     # int8 on CPU; float16 on a GPU
 language = ""             # "" = detect per file; "fr" or "en" to force
-beam_size = 5
+beam_size = 6
 vad_filter = true
-rescan_interval_seconds = 120
-write_markdown = true
+condition_on_previous_text = false
+# initial_prompt = "..."  # defaults to the bilingual legal-dictation prompt
+paragraph_chars = 900     # split long paragraphs at about this many characters (0 = never)
+rescan_interval_seconds = 30
+write_markdown = false    # true also writes a timestamped .md beside the .txt
 recursive = false
 
 [logging]

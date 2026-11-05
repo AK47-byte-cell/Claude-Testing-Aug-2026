@@ -10,6 +10,8 @@ def test_defaults_have_inbox_and_state_dir():
     assert cfg.folders.inbox.name
     assert cfg.folders.state_dir.name == ".soundcore-sync"
     assert cfg.transcription.model == "medium"
+    assert cfg.transcription.compute_type == "int8" and cfg.transcription.beam_size == 6
+    assert "legal dictation" in cfg.transcription.initial_prompt
 
 
 def test_from_dict_expands_and_casts(monkeypatch):

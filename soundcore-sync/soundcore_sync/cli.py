@@ -39,7 +39,8 @@ def build_engine(cfg: Config):
     from .transcriber import WhisperEngine
 
     tc = cfg.transcription
-    return WhisperEngine(tc.model, tc.device, tc.compute_type, tc.language, tc.beam_size, tc.vad_filter)
+    return WhisperEngine(tc.model, tc.device, tc.compute_type, tc.language, tc.beam_size, tc.vad_filter,
+                         tc.initial_prompt, tc.condition_on_previous_text)
 
 
 def cmd_init(cfg: Config, args) -> int:

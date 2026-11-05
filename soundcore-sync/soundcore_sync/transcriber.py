@@ -41,14 +41,17 @@ class TranscriptionEngine(Protocol):
 class WhisperEngine:
     """faster-whisper backed engine; the model is loaded on first use."""
 
-    def __init__(self, model: str, device: str = "auto", compute_type: str = "default",
-                 language: str = "", beam_size: int = 5, vad_filter: bool = True):
+    def __init__(self, model: str, device: str = "cpu", compute_type: str = "int8",
+                 language: str = "", beam_size: int = 6, vad_filter: bool = True,
+                 initial_prompt: str | None = None, condition_on_previous_text: bool = False):
         self.name = model
         self.device = device
         self.compute_type = compute_type
         self.language = language or None
         self.beam_size = beam_size
         self.vad_filter = vad_filter
+        self.initial_prompt = initial_prompt or None
+        self.condition_on_previous_text = condition_on_previous_text
         self._model = None
         self._lock = threading.Lock()
 
@@ -66,6 +69,8 @@ class WhisperEngine:
         model = self._load()
         segments, info = model.transcribe(
             str(path), language=self.language, beam_size=self.beam_size, vad_filter=self.vad_filter,
+            task="transcribe", initial_prompt=self.initial_prompt,
+            condition_on_previous_text=self.condition_on_previous_text,
         )
         result = TranscriptResult(
             language=getattr(info, "language", None),
@@ -92,8 +97,35 @@ def _duration_text(seconds: float | None) -> str:
     return f"{h} h {m:02d} min {sec:02d} s" if h else f"{m} min {sec:02d} s"
 
 
-def render_text(result: TranscriptResult, paragraph_gap: float = 2.0) -> str:
-    """Plain text; a new paragraph starts whenever the speech pauses for more than ``paragraph_gap`` s."""
+_PUNCT_FIXES = ((" ,", ","), (" .", "."), (" ;", ";"), (" :", ":"), (" ?", "?"), (" !", "!"), ("( ", "("), (" )", ")"))
+
+
+def clean_text(text: str) -> str:
+    """Collapse whitespace and remove the stray spaces Whisper leaves before punctuation."""
+    text = " ".join(text.split())
+    for old, new in _PUNCT_FIXES:
+        text = text.replace(old, new)
+    return text.strip()
+
+
+def _split_long(paragraph: str, max_chars: int) -> list[str]:
+    if max_chars <= 0 or len(paragraph) <= max_chars:
+        return [paragraph]
+    out, current, length = [], [], 0
+    for word in paragraph.split():
+        current.append(word)
+        length += len(word) + 1
+        if length >= max_chars:
+            out.append(" ".join(current))
+            current, length = [], 0
+    if current:
+        out.append(" ".join(current))
+    return out
+
+
+def render_text(result: TranscriptResult, paragraph_gap: float = 2.0, paragraph_chars: int = 900) -> str:
+    """Plain text. A new paragraph starts when the speech pauses for more than ``paragraph_gap``
+    seconds, and paragraphs longer than ``paragraph_chars`` are split at a word boundary."""
     paragraphs: list[list[str]] = [[]]
     last_end = None
     for seg in result.segments:
@@ -103,7 +135,11 @@ def render_text(result: TranscriptResult, paragraph_gap: float = 2.0) -> str:
             paragraphs.append([])
         paragraphs[-1].append(seg.text)
         last_end = seg.end
-    return "\n\n".join(" ".join(p) for p in paragraphs if p) + "\n"
+    chunks: list[str] = []
+    for p in paragraphs:
+        if p:
+            chunks.extend(_split_long(clean_text(" ".join(p)), paragraph_chars))
+    return "\n\n".join(chunks) + "\n"
 
 
 def render_markdown(result: TranscriptResult, audio_path: Path, model_name: str,
@@ -168,7 +204,7 @@ class TranscribeLoop:
     # ---- discovery ----------------------------------------------------------------------
 
     def _is_audio(self, path: Path) -> bool:
-        return path.suffix.lower() in self.tc.extensions and not path.name.startswith((".", "~$"))
+        return path.suffix.lower() in self.tc.extensions and not path.name.startswith((".", "~"))
 
     def scan_inbox(self) -> list[Path]:
         if not self.inbox.is_dir():
@@ -233,7 +269,7 @@ class TranscribeLoop:
         try:
             result = self.engine.transcribe(path)
             txt.parent.mkdir(parents=True, exist_ok=True)
-            write_text_atomic(txt, render_text(result))
+            write_text_atomic(txt, render_text(result, paragraph_chars=self.tc.paragraph_chars))
             if self.tc.write_markdown:
                 write_text_atomic(md, render_markdown(result, path, self.engine.name))
         except Exception as exc:

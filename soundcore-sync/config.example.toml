@@ -20,14 +20,17 @@ filename_prefix = "soundcore"  # files are named 2026-11-04_14-35-07_soundcore.o
 [transcription]
 enabled = true
 model = "medium"          # tiny / base / small / medium / large-v3 (downloaded on first use)
-device = "auto"           # auto, cpu or cuda
-compute_type = "default"  # int8 is a good choice on CPU
+device = "cpu"            # cpu, cuda or auto
+compute_type = "int8"     # int8 on CPU; float16 on a GPU
 language = ""             # "" = detect per file; "fr" or "en" to force
-beam_size = 5
+beam_size = 6
 vad_filter = true
-rescan_interval_seconds = 120
+condition_on_previous_text = false
+# initial_prompt = "..."  # defaults to the bilingual legal-dictation prompt
+paragraph_chars = 900     # split long paragraphs at about this many characters (0 = never)
+rescan_interval_seconds = 30
 settle_seconds = 5
-write_markdown = true
+write_markdown = false    # true also writes a timestamped .md beside the .txt
 recursive = false
 
 [logging]

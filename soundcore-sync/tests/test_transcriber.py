@@ -8,6 +8,7 @@ from soundcore_sync.transcriber import (
     Segment,
     TranscribeLoop,
     TranscriptResult,
+    clean_text,
     render_markdown,
     render_text,
 )
@@ -47,6 +48,19 @@ def test_render_text_paragraphs_on_pauses():
     assert render_text(r) == "Bonjour à tous. Nous commençons.\n\nMerci.\n"
 
 
+def test_clean_text_fixes_spacing_before_punctuation():
+    assert clean_text("Bonjour ,  maître .  ( oui )  ?") == "Bonjour, maître. (oui)?"
+
+
+def test_render_text_splits_long_paragraphs_at_word_boundaries():
+    words = " ".join(f"mot{i}" for i in range(400))  # about 2.8k characters, no pauses
+    r = TranscriptResult("fr", 1.0, 100.0, [Segment(0, 100, words)])
+    paras = render_text(r, paragraph_chars=900).strip().split("\n\n")
+    assert len(paras) == 4 and all(len(p) <= 920 for p in paras)
+    assert " ".join(paras) == words
+    assert render_text(r, paragraph_chars=0).strip() == words
+
+
 def test_render_markdown_has_header_and_timestamps():
     md = render_markdown(StubEngine().transcribe(None), Path("x.ogg"), "medium")
     assert "# Transcription : x.ogg" in md and "Durée : 0 min 08 s" in md
@@ -63,7 +77,7 @@ def test_pending_and_process(tmp_path):
     assert loop.is_ready(audio) is True    # unchanged since, settle = 0
     assert loop.process_pending() == 1
     assert (loop.inbox / "2026-11-04_10-00-00_soundcore.txt").read_text(encoding="utf-8").startswith("Bonjour")
-    assert (loop.inbox / "2026-11-04_10-00-00_soundcore.md").is_file()
+    assert not (loop.inbox / "2026-11-04_10-00-00_soundcore.md").exists()  # markdown is opt-in
     assert loop.pending() == []
     assert loop.process_pending() == 0 and loop.engine.calls == 1
 
