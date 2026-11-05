@@ -33,5 +33,15 @@ settle_seconds = 5
 write_markdown = false    # true also writes a timestamped .md beside the .txt
 recursive = false
 
+[rename]
+# After transcription, find the file number (said in the recording, or inferred from the names
+# in it matched against your list of files) and rename the audio and the transcript:
+#   2026-11-05_14-35 - 1234-56 - Tremblay c. Assurances XYZ.ogg
+enabled = true
+mode = "auto"               # auto = rename when confident; propose = only record a proposal; off
+# Folder whose sub-folders are named "1234-56 Client name" (or a CSV with one file per line).
+matters_source = "%OneDriveCommercial%/Dossiers"
+auto_on_name_match = false  # true = also rename on a confident name match without a spoken number
+
 [logging]
 level = "INFO"

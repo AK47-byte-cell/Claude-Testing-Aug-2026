@@ -27,8 +27,17 @@ script, wait, fetch the transcript. After: record, put the recorder on the desk,
   prompt, no conditioning on previous text, punctuation clean-up, paragraphs of about 900
   characters). Set `write_markdown = true` to also get a timestamped `name.md`. Files that already
   have a `.txt` are left alone, so the existing backlog is not redone.
-* A small database in `~/.soundcore-sync/` remembers what was pulled and transcribed, so nothing is
-  done twice, even after a restart or a OneDrive re-sync.
+* **Renamer.** Once the transcript exists, the tool looks for the file number. If you said it in the
+  recording ("dossier 1234-56", in digits or in words, with or without "tiret"), the audio and the
+  transcript are renamed on the spot: `2026-11-05_14-35 - 1234-56 - Tremblay c. Assurances XYZ.ogg`.
+  The client name comes from your list of files on OneDrive (`rename.matters_source`: a folder whose
+  sub-folders start with the file number, or a CSV). If you did not say the number, the names in the
+  recording are matched against that list; a confident, unambiguous match is recorded as a proposal
+  (or applied, with `auto_on_name_match = true`), and `soundcore-sync review` lets you accept it, type
+  another number, or reject it. Files with no usable clue keep their date name. The original name is
+  kept, and `soundcore-sync undo "<file>"` restores it. Nothing is sent to any outside service.
+* A small database in `~/.soundcore-sync/` remembers what was pulled, transcribed and renamed, so
+  nothing is done twice, even after a restart or a OneDrive re-sync.
 
 Transfer speed is set by the recorder's Bluetooth link: roughly one minute of transfer per ten
 minutes of audio. A one-hour meeting is on your disk about six minutes after you set the recorder
@@ -111,6 +120,9 @@ community reverse-engineering and a different firmware may shift them.
 | `soundcore-sync transcribe` | Transcribe everything pending in the inbox once. `--file X` for one file. |
 | `soundcore-sync scan` | Is the recorder visible right now? |
 | `soundcore-sync status` | Counts and the last few results. |
+| `soundcore-sync review` | Accept, correct or reject pending rename proposals (`--accept-all`, `--reject-all`). |
+| `soundcore-sync undo "<file>"` | Give a renamed recording and its transcript their original name back. |
+| `soundcore-sync matters` | Show the file list as read from OneDrive; `--text "..."` tests the matching on a sample transcript. |
 | `soundcore-sync init` | Write the config file and create the folders. |
 
 All commands take `--config PATH` and `-v`.
@@ -127,6 +139,9 @@ See `config.example.toml`. The important ones:
 | `transcription.model` / `device` / `compute_type` | faster-whisper settings. |
 | `transcription.language` | `""` auto-detect per file, or `fr` / `en`. |
 | `transcription.settle_seconds` | A file must be unchanged this long before it is used (OneDrive writes progressively). |
+| `rename.matters_source` | Your list of files: a folder of "1234-56 Client" sub-folders or a CSV. Without it only spoken numbers can be used. |
+| `rename.mode` | `auto` renames when confident, `propose` only records proposals, `off`. |
+| `rename.auto_on_name_match` | Also rename automatically when only the names matched (default: propose). |
 
 ## Development
 
@@ -136,8 +151,9 @@ pytest
 ```
 
 The tests cover configuration, the manifest, the frame builder and list parser, the key wrap and
-chunk decryption, the Ogg/Opus container, a simulated end-to-end download through the client, and the
-transcription loop with a stub engine. They need no Bluetooth hardware and no model download.
+chunk decryption, the Ogg/Opus container, a simulated end-to-end download through the client, the
+transcription loop with a stub engine, the matter list, spoken-number detection (digits and words,
+French and English) and the renaming rules. They need no Bluetooth hardware and no model download.
 
 ## Licence and credits
 

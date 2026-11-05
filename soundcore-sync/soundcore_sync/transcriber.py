@@ -13,6 +13,8 @@ from typing import Protocol
 
 from .config import Config
 from .manifest import Manifest
+from .matters import MatterIndex
+from .renamer import Proposal, build_stem, propose, rename_set
 
 log = logging.getLogger(__name__)
 
@@ -200,6 +202,8 @@ class TranscribeLoop:
         self._seen: dict[Path, _Seen] = {}
         self._wake = threading.Event()
         self._lock = threading.Lock()
+        self._matters: MatterIndex | None = None
+        self._matters_loaded_at = 0.0
 
     # ---- discovery ----------------------------------------------------------------------
 
@@ -280,7 +284,69 @@ class TranscribeLoop:
         self.manifest.mark_transcribed(path, st.st_size, st.st_mtime, sha256_file(path), txt,
                                        self.engine.name, result.language)
         log.info("Transcript written: %s (%s, %.0f s)", txt.name, result.language, time.monotonic() - started)
+        try:
+            txt = self.maybe_rename(path, txt, render_text(result)) or txt
+        except Exception:
+            log.exception("Renaming of %s failed; the file keeps its name", path.name)
         return txt
+
+    # ---- renaming -----------------------------------------------------------------------
+
+    def matters(self) -> MatterIndex:
+        """The matter list, reloaded at most every ten minutes."""
+        rc = self.cfg.rename
+        if self._matters is None or time.time() - self._matters_loaded_at > 600:
+            self._matters = MatterIndex.load(rc.matters_source)
+            self._matters_loaded_at = time.time()
+            if rc.matters_source and len(self._matters) == 0:
+                log.warning("No file numbers found in the matter list at %s", rc.matters_source)
+        return self._matters
+
+    def maybe_rename(self, audio: Path, txt: Path, text: str) -> Path | None:
+        """Rename when confident; otherwise record a proposal for `soundcore-sync review`."""
+        rc = self.cfg.rename
+        if not rc.enabled or rc.mode == "off":
+            return None
+        if self.manifest.original_name(audio) is not None:
+            return None  # already renamed once
+        prop = propose(text, self.matters(), min_score=rc.min_score, margin=rc.margin)
+        if not prop.found:
+            log.info("No file number found for %s", audio.name)
+            return None
+        confident = prop.confidence == "high" or (prop.confidence == "medium" and (
+            prop.method == "spoken" or rc.auto_on_name_match))
+        if rc.mode == "auto" and confident:
+            return self.apply_rename(audio, prop)
+        self.manifest.record_proposal(audio, prop.number, prop.label, prop.method, prop.confidence, prop.note,
+                                      "; ".join(f"{c.matter.number} {c.matter.label} ({c.score:.1f})"
+                                                for c in prop.candidates))
+        log.info("Proposed for %s: %s %s (%s, %s); run `soundcore-sync review`",
+                 audio.name, prop.number, prop.label or "", prop.method, prop.confidence)
+        return None
+
+    def apply_rename(self, audio: Path, prop: Proposal) -> Path | None:
+        rc = self.cfg.rename
+        new_stem = build_stem(audio.stem, prop.number, prop.label, max_len=rc.max_length)
+        if new_stem == audio.stem:
+            return None
+        if self.cfg.folders.transcripts and self.cfg.folders.transcripts != audio.parent:
+            # transcripts live elsewhere: rename them there too
+            moves = rename_set(audio, new_stem, companions=())
+            new_audio = moves[audio]
+            for ext in rc.companions:
+                old = self.cfg.folders.transcripts / (audio.stem + ext)
+                if old.is_file():
+                    new = old.with_name(new_audio.stem + ext)
+                    old.rename(new)
+                    moves[old] = new
+        else:
+            moves = rename_set(audio, new_stem, companions=rc.companions)
+            new_audio = moves[audio]
+        new_txt = next((n for o, n in moves.items() if n.suffix == ".txt"), None)
+        self.manifest.move_transcript(audio, new_audio, new_txt)
+        self.manifest.record_rename(audio, new_audio, prop.number, prop.label, prop.method, prop.confidence)
+        log.info("Renamed %s -> %s (%s, %s)", audio.name, new_audio.name, prop.method, prop.confidence)
+        return new_txt
 
     def process_pending(self) -> int:
         """One pass: transcribe every settled file that still needs it. Returns how many were done."""

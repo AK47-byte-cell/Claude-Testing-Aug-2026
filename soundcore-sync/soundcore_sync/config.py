@@ -79,6 +79,18 @@ class TranscriptionConfig:
 
 
 @dataclass
+class RenameConfig:
+    enabled: bool = True
+    mode: str = "auto"                    # auto = rename when confident, propose = never rename, off
+    matters_source: Path | None = None    # folder (sub-folders "1234-56 Client") or CSV listing the files
+    auto_on_name_match: bool = False      # rename automatically on a name match (no spoken number)
+    min_score: float = 0.0                # 0 = one word unique to a single matter; higher = stricter
+    margin: float = 1.5                   # best match must beat the runner-up by this factor
+    max_length: int = 120
+    companions: tuple[str, ...] = (".txt", ".md")
+
+
+@dataclass
 class LoggingConfig:
     file: Path | None = None
     level: str = "INFO"
@@ -89,6 +101,7 @@ class Config:
     folders: FoldersConfig = field(default_factory=FoldersConfig)
     recorder: RecorderConfig = field(default_factory=RecorderConfig)
     transcription: TranscriptionConfig = field(default_factory=TranscriptionConfig)
+    rename: RenameConfig = field(default_factory=RenameConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     source: Path | None = None
 
@@ -127,6 +140,14 @@ class Config:
             cfg.transcription.extensions = tuple(
                 e if e.startswith(".") else "." + e for e in data["transcription"]["extensions"]
             )
+        rename = dict(data.get("rename", {}))
+        if "matters_source" in rename:
+            cfg.rename.matters_source = expand(rename.pop("matters_source"))
+        if "companions" in rename:
+            cfg.rename.companions = tuple(rename.pop("companions"))
+        _apply(cfg.rename, rename)
+        if cfg.rename.mode not in ("auto", "propose", "off"):
+            raise ValueError("rename.mode must be auto, propose or off")
         log = data.get("logging", {})
         if log.get("file"):
             cfg.logging.file = expand(log["file"])
@@ -195,6 +216,16 @@ paragraph_chars = 900     # split long paragraphs at about this many characters 
 rescan_interval_seconds = 30
 write_markdown = false    # true also writes a timestamped .md beside the .txt
 recursive = false
+
+[rename]
+# After transcription, find the file number (said in the recording, or inferred from the names
+# in it matched against your list of files) and rename the audio and the transcript:
+#   2026-11-05_14-35 - 1234-56 - Tremblay c. Assurances XYZ.ogg
+enabled = true
+mode = "auto"               # auto = rename when confident; propose = only record a proposal; off
+# Folder whose sub-folders are named "1234-56 Client name" (or a CSV with one file per line).
+matters_source = "%OneDriveCommercial%/Dossiers"
+auto_on_name_match = false  # true = also rename on a confident name match without a spoken number
 
 [logging]
 level = "INFO"

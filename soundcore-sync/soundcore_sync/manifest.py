@@ -41,6 +41,26 @@ class Manifest:
                     path         TEXT NOT NULL,
                     pulled_at    TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS renames (
+                    current_path     TEXT PRIMARY KEY,
+                    original_path    TEXT NOT NULL,
+                    file_number      TEXT,
+                    label            TEXT,
+                    method           TEXT,
+                    confidence       TEXT,
+                    renamed_at       TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS proposals (
+                    path             TEXT PRIMARY KEY,
+                    file_number      TEXT,
+                    label            TEXT,
+                    method           TEXT,
+                    confidence       TEXT,
+                    note             TEXT,
+                    candidates       TEXT,
+                    status           TEXT NOT NULL,
+                    created_at       TEXT NOT NULL
+                );
                 CREATE TABLE IF NOT EXISTS transcripts (
                     path             TEXT PRIMARY KEY,
                     size             INTEGER NOT NULL,
@@ -131,6 +151,57 @@ class Manifest:
             )
             self._db.commit()
             return self._db.execute("SELECT attempts FROM transcripts WHERE path=?", (str(path),)).fetchone()[0]
+
+    def move_transcript(self, old: Path, new: Path, transcript_path: Path | None) -> None:
+        with self._lock:
+            self._db.execute("UPDATE transcripts SET path=?, transcript_path=COALESCE(?, transcript_path) "
+                             "WHERE path=?", (str(new), str(transcript_path) if transcript_path else None, str(old)))
+            self._db.commit()
+
+    # ---- renames and proposals ---------------------------------------------------------------
+
+    def record_rename(self, original: Path, current: Path, number: str | None, label: str | None,
+                      method: str, confidence: str) -> None:
+        with self._lock:
+            prior = self._db.execute("SELECT original_path FROM renames WHERE current_path=?",
+                                     (str(original),)).fetchone()
+            root = prior["original_path"] if prior else str(original)
+            self._db.execute("DELETE FROM renames WHERE current_path=?", (str(original),))
+            self._db.execute(
+                "INSERT OR REPLACE INTO renames (current_path, original_path, file_number, label, method, "
+                "confidence, renamed_at) VALUES (?,?,?,?,?,?,?)",
+                (str(current), root, number, label, method, confidence, _now()))
+            self._db.execute("DELETE FROM proposals WHERE path=?", (str(original),))
+            self._db.commit()
+
+    def original_name(self, current: Path) -> Path | None:
+        with self._lock:
+            row = self._db.execute("SELECT original_path FROM renames WHERE current_path=?",
+                                   (str(current),)).fetchone()
+        return Path(row["original_path"]) if row else None
+
+    def forget_rename(self, current: Path) -> None:
+        with self._lock:
+            self._db.execute("DELETE FROM renames WHERE current_path=?", (str(current),))
+            self._db.commit()
+
+    def record_proposal(self, path: Path, number: str | None, label: str | None, method: str,
+                        confidence: str, note: str, candidates: str) -> None:
+        with self._lock:
+            self._db.execute(
+                "INSERT OR REPLACE INTO proposals (path, file_number, label, method, confidence, note, "
+                "candidates, status, created_at) VALUES (?,?,?,?,?,?,?,'pending',?)",
+                (str(path), number, label, method, confidence, note, candidates, _now()))
+            self._db.commit()
+
+    def pending_proposals(self) -> list[sqlite3.Row]:
+        with self._lock:
+            return self._db.execute("SELECT * FROM proposals WHERE status='pending' ORDER BY created_at").fetchall()
+
+    def set_proposal_status(self, path: Path, status: str) -> None:
+        with self._lock:
+            self._db.execute("UPDATE proposals SET status=? WHERE path=?", (status, str(path)))
+            self._db.commit()
 
     def transcript_counts(self) -> dict[str, int]:
         with self._lock:

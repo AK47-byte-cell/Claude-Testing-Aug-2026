@@ -48,3 +48,13 @@ def test_load_file(tmp_path):
     assert cfg.folders.inbox == tmp_path / "in"
     assert cfg.transcription.model == "small"
     assert cfg.source == p
+
+
+def test_rename_section(monkeypatch):
+    monkeypatch.setenv("OD", "/od")
+    cfg = Config.from_dict({"rename": {"mode": "propose", "matters_source": "$OD/Dossiers",
+                                       "auto_on_name_match": True, "companions": [".txt"]}})
+    assert cfg.rename.mode == "propose" and cfg.rename.matters_source == Path("/od/Dossiers")
+    assert cfg.rename.auto_on_name_match is True and cfg.rename.companions == (".txt",)
+    with pytest.raises(ValueError):
+        Config.from_dict({"rename": {"mode": "maybe"}})

@@ -118,9 +118,93 @@ def cmd_status(cfg: Config, args) -> int:
     print(f"Pulled from recorder: {manifest.pulled_count()}")
     counts = manifest.transcript_counts()
     print(f"Transcriptions: done={counts.get('done', 0)} failed={counts.get('failed', 0)}")
+    pending = manifest.pending_proposals()
+    if pending:
+        print(f"Rename proposals waiting for review: {len(pending)} (run: soundcore-sync review)")
     for row in manifest.recent(8):
         extra = f" — {row['error'][:80]}" if row["error"] else ""
         print(f"  {row['updated_at']}  {row['status']:6}  {Path(row['path']).name}{extra}")
+    return 0
+
+
+def cmd_matters(cfg: Config, args) -> int:
+    from .matters import MatterIndex
+    from .renamer import propose
+
+    index = MatterIndex.load(cfg.rename.matters_source)
+    print(f"Matter list: {cfg.rename.matters_source or '(not configured: set rename.matters_source)'}")
+    print(f"{len(index)} file number(s) loaded")
+    for m in list(index.matters.values())[:5]:
+        print(f"  {m.number}  {m.label}")
+    if args.text:
+        prop = propose(args.text, index, min_score=cfg.rename.min_score, margin=cfg.rename.margin)
+        print(f"Result: number={prop.number} label={prop.label} method={prop.method} "
+              f"confidence={prop.confidence}\n  {prop.note}")
+        for c in prop.candidates:
+            print(f"  candidate {c.matter.number} {c.matter.label} score={c.score:.1f} words={c.matched}")
+    return 0
+
+
+def cmd_review(cfg: Config, args) -> int:
+    """Accept or reject pending rename proposals."""
+    from .renamer import Proposal
+    from .transcriber import TranscribeLoop
+
+    manifest = Manifest(cfg.folders.state_dir / "manifest.sqlite")
+    rows = manifest.pending_proposals()
+    if not rows:
+        print("No pending proposals.")
+        return 0
+    loop = TranscribeLoop(cfg, manifest, None)
+    for row in rows:
+        path = Path(row["path"])
+        if not path.is_file():
+            manifest.set_proposal_status(path, "gone")
+            continue
+        print(f"\n{path.name}\n  proposed: {row['file_number']} {row['label'] or ''}  "
+              f"({row['method']}, {row['confidence']})\n  {row['note']}")
+        if row["candidates"]:
+            print(f"  candidates: {row['candidates']}")
+        if args.accept_all:
+            answer = "y"
+        elif args.reject_all:
+            answer = "n"
+        else:
+            answer = input("  rename? [y]es / [n]o / file number (1234-56) / [s]kip: ").strip().lower()
+        if answer in ("s", ""):
+            continue
+        if answer == "n":
+            manifest.set_proposal_status(path, "rejected")
+            continue
+        number, label = row["file_number"], row["label"]
+        if answer != "y":
+            number = answer
+            m = loop.matters().get(number)
+            label = m.label if m else None
+        new_txt = loop.apply_rename(path, Proposal(number, label, "review", "high"))
+        manifest.set_proposal_status(path, "accepted")
+        print(f"  -> {new_txt.name if new_txt else 'renamed'}")
+    return 0
+
+
+def cmd_undo(cfg: Config, args) -> int:
+    """Give a renamed recording (and its transcript) its original name back."""
+    from .renamer import rename_set
+
+    manifest = Manifest(cfg.folders.state_dir / "manifest.sqlite")
+    current = Path(args.file)
+    if not current.is_absolute():
+        current = cfg.folders.inbox / current
+    original = manifest.original_name(current)
+    if original is None:
+        print(f"{current.name} was not renamed by soundcore-sync (or was undone already).")
+        return 1
+    moves = rename_set(current, original.stem, companions=cfg.rename.companions)
+    new_audio = moves[current]
+    new_txt = next((n for n in moves.values() if n.suffix == ".txt"), None)
+    manifest.move_transcript(current, new_audio, new_txt)
+    manifest.forget_rename(current)
+    print(f"Restored: {new_audio.name}")
     return 0
 
 
@@ -182,6 +266,16 @@ def main(argv: list[str] | None = None) -> int:
     p.set_defaults(func=cmd_transcribe)
     sub.add_parser("scan", help="check whether the recorder is visible").set_defaults(func=cmd_scan)
     sub.add_parser("status", help="show what has been pulled and transcribed").set_defaults(func=cmd_status)
+    p = sub.add_parser("matters", help="show the matter list; --text to test the matching")
+    p.add_argument("--text", help="transcript text to test against the list")
+    p.set_defaults(func=cmd_matters)
+    p = sub.add_parser("review", help="accept or reject pending rename proposals")
+    p.add_argument("--accept-all", action="store_true")
+    p.add_argument("--reject-all", action="store_true")
+    p.set_defaults(func=cmd_review)
+    p = sub.add_parser("undo", help="restore a renamed recording's original name")
+    p.add_argument("file", help="current file name (in the inbox) or path")
+    p.set_defaults(func=cmd_undo)
     p = sub.add_parser("init", help="write a config file and create the folders")
     p.add_argument("--force", action="store_true")
     p.set_defaults(func=cmd_init)

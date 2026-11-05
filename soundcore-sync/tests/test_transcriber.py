@@ -132,3 +132,93 @@ def test_separate_transcript_folder(tmp_path):
     loop.is_ready(audio)
     loop.process_pending()
     assert (tmp_path / "out" / "a.txt").is_file()
+
+
+# ---- renaming after transcription ------------------------------------------------------------
+
+class SpokenEngine(StubEngine):
+    def __init__(self, text):
+        super().__init__()
+        self.text = text
+
+    def transcribe(self, path):
+        self.calls += 1
+        return TranscriptResult("fr", 0.9, 5.0, [Segment(0.0, 5.0, self.text)])
+
+
+def matters_folder(tmp_path):
+    folder = tmp_path / "Dossiers"
+    (folder / "1234-56 Tremblay c. Assurances XYZ").mkdir(parents=True)
+    (folder / "2345-67 Gagnon c. Beaulieu").mkdir()
+    return folder
+
+
+def test_spoken_number_renames_audio_and_transcript(tmp_path):
+    loop = make_loop(tmp_path, SpokenEngine("Dossier 1234-56. Rencontre avec monsieur Tremblay."))
+    loop.cfg.rename.matters_source = matters_folder(tmp_path)
+    audio = loop.inbox / "2026-11-05_14-35-07_soundcore.ogg"
+    audio.write_bytes(b"x" * 10)
+    loop.is_ready(audio)
+    assert loop.process_pending() == 1
+    new_audio = loop.inbox / "2026-11-05_14-35 - 1234-56 - Tremblay c. Assurances XYZ.ogg"
+    assert new_audio.is_file() and new_audio.with_suffix(".txt").is_file() and not audio.exists()
+    assert loop.manifest.original_name(new_audio) == audio
+    assert not loop.manifest.needs_transcription(new_audio, 10, new_audio.stat().st_mtime, 3)
+    assert loop.process_pending() == 0 and loop.engine.calls == 1
+
+
+def test_name_match_only_proposes_by_default(tmp_path):
+    loop = make_loop(tmp_path, SpokenEngine("Appel de monsieur Gagnon concernant Beaulieu."))
+    loop.cfg.rename.matters_source = matters_folder(tmp_path)
+    audio = loop.inbox / "a.ogg"
+    audio.write_bytes(b"x" * 10)
+    loop.is_ready(audio)
+    loop.process_pending()
+    assert audio.is_file()
+    rows = loop.manifest.pending_proposals()
+    assert len(rows) == 1 and rows[0]["file_number"] == "2345-67" and rows[0]["method"] == "names"
+
+
+def test_name_match_renames_when_enabled(tmp_path):
+    loop = make_loop(tmp_path, SpokenEngine("Appel de monsieur Gagnon concernant Beaulieu."))
+    loop.cfg.rename.matters_source = matters_folder(tmp_path)
+    loop.cfg.rename.auto_on_name_match = True
+    audio = loop.inbox / "a.ogg"
+    audio.write_bytes(b"x" * 10)
+    loop.is_ready(audio)
+    loop.process_pending()
+    assert (loop.inbox / "a - 2345-67 - Gagnon c. Beaulieu.ogg").is_file()
+
+
+def test_propose_mode_never_renames(tmp_path):
+    loop = make_loop(tmp_path, SpokenEngine("Dossier 1234-56."))
+    loop.cfg.rename.matters_source = matters_folder(tmp_path)
+    loop.cfg.rename.mode = "propose"
+    audio = loop.inbox / "a.ogg"
+    audio.write_bytes(b"x" * 10)
+    loop.is_ready(audio)
+    loop.process_pending()
+    assert audio.is_file() and len(loop.manifest.pending_proposals()) == 1
+
+
+def test_rename_with_separate_transcript_folder(tmp_path):
+    loop = make_loop(tmp_path, SpokenEngine("Dossier 1234-56."))
+    loop.cfg.rename.matters_source = matters_folder(tmp_path)
+    loop.cfg.folders.transcripts = tmp_path / "out"
+    audio = loop.inbox / "a.ogg"
+    audio.write_bytes(b"x" * 10)
+    loop.is_ready(audio)
+    loop.process_pending()
+    assert (loop.inbox / "a - 1234-56 - Tremblay c. Assurances XYZ.ogg").is_file()
+    assert (tmp_path / "out" / "a - 1234-56 - Tremblay c. Assurances XYZ.txt").is_file()
+    assert not (tmp_path / "out" / "a.txt").exists()
+
+
+def test_no_number_leaves_file_alone(tmp_path):
+    loop = make_loop(tmp_path, SpokenEngine("Note générale."))
+    loop.cfg.rename.matters_source = matters_folder(tmp_path)
+    audio = loop.inbox / "a.ogg"
+    audio.write_bytes(b"x" * 10)
+    loop.is_ready(audio)
+    loop.process_pending()
+    assert audio.is_file() and loop.manifest.pending_proposals() == []
