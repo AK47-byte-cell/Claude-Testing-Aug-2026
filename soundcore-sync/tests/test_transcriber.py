@@ -53,10 +53,10 @@ def test_clean_text_fixes_spacing_before_punctuation():
 
 
 def test_render_text_splits_long_paragraphs_at_word_boundaries():
-    words = " ".join(f"mot{i}" for i in range(400))  # about 2.8k characters, no pauses
+    words = " ".join(f"mot{i}" for i in range(400))  # about 2.7k characters, no pauses
     r = TranscriptResult("fr", 1.0, 100.0, [Segment(0, 100, words)])
     paras = render_text(r, paragraph_chars=900).strip().split("\n\n")
-    assert len(paras) == 4 and all(len(p) <= 920 for p in paras)
+    assert len(paras) == 3 and all(len(p) <= 920 for p in paras)
     assert " ".join(paras) == words
     assert render_text(r, paragraph_chars=0).strip() == words
 
