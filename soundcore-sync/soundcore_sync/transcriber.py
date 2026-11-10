@@ -308,7 +308,15 @@ class TranscribeLoop:
         """The matter list, reloaded at most every ten minutes."""
         rc = self.cfg.rename
         if self._matters is None or time.time() - self._matters_loaded_at > 600:
-            self._matters = MatterIndex.load(rc.matters_source)
+            try:
+                fresh = MatterIndex.load(rc.matters_source)
+            except Exception as exc:  # noqa: BLE001 - e.g. workbook locked or half-synced
+                log.warning("Could not reload the matter list (%s); keeping the previous one", exc)
+                fresh = None
+            if fresh is not None and (len(fresh) or self._matters is None):
+                self._matters = fresh
+            elif fresh is not None:
+                log.warning("Matter list at %s came back empty; keeping the previous one", rc.matters_source)
             self._matters_loaded_at = time.time()
             if rc.matters_source and len(self._matters) == 0:
                 log.warning("No file numbers found in the matter list at %s", rc.matters_source)

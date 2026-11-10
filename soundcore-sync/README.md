@@ -30,8 +30,11 @@ script, wait, fetch the transcript. After: record, put the recorder on the desk,
 * **Renamer.** Once the transcript exists, the tool looks for the file number. If you said it in the
   recording ("dossier 1234-56", in digits or in words, with or without "tiret"), the audio and the
   transcript are renamed on the spot: `2026-11-05_14-35 - 1234-56 - Tremblay c. Assurances XYZ.ogg`.
-  The client name comes from your list of files on OneDrive (`rename.matters_source`: a folder whose
-  sub-folders start with the file number, or a CSV). If you did not say the number, the names in the
+  The client name comes from your list of files on OneDrive (`rename.matters_source`): the
+  `AKS Liste dossiers.xlsm` workbook by default, read directly, with the file-number and client columns
+  found automatically and the other columns of the row (parties, insurer...) used as extra clues;
+  because the name of the workbook changes with its date, the setting is a pattern and the most recent
+  match is used. A folder of "1234-56 Client" sub-folders or a CSV work too. If you did not say the number, the names in the
   recording are matched against that list; a confident, unambiguous match is recorded as a proposal
   (or applied, with `auto_on_name_match = true`), and `soundcore-sync review` lets you accept it, type
   another number, or reject it. The original name is kept, and `soundcore-sync undo "<file>"` restores
@@ -178,7 +181,7 @@ See `config.example.toml`. The important ones:
 | `transcription.model` / `device` / `compute_type` | faster-whisper settings. |
 | `transcription.language` | `""` auto-detect per file, or `fr` / `en`. |
 | `transcription.settle_seconds` | A file must be unchanged this long before it is used (OneDrive writes progressively). |
-| `rename.matters_source` | Your list of files: a folder of "1234-56 Client" sub-folders or a CSV. Without it only spoken numbers can be used. |
+| `rename.matters_source` | Your list of files: an Excel workbook, a folder of "1234-56 Client" sub-folders or a CSV; `*` picks the most recent match. Without it only spoken numbers can be used. |
 | `rename.mode` | `auto` renames when confident, `propose` only records proposals, `off`. |
 | `rename.auto_on_name_match` | Also rename automatically when only the names matched (default: propose). |
 | `rename.pattern` | Order of the name parts; missing parts are dropped. Default `{date} - {number} - {label} - {subject}`. |

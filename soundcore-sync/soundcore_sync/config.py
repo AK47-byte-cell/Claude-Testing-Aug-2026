@@ -248,8 +248,9 @@ recursive = false
 #   2026-11-05_14-35 - 1234-56 - Tremblay c. Assurances XYZ.ogg
 enabled = true
 mode = "auto"               # auto = rename when confident; propose = only record a proposal; off
-# Folder whose sub-folders are named "1234-56 Client name" (or a CSV with one file per line).
-matters_source = "%OneDriveCommercial%/Dossiers"
+# Your list of files: an Excel workbook, a folder of "1234-56 Client" sub-folders, or a CSV.
+# * and ? are allowed; the most recent matching file is used, so the date in the name may change.
+matters_source = "%OneDriveCommercial%/*AKS Liste dossiers.xlsm"
 auto_on_name_match = false  # true = also rename on a confident name match without a spoken number
 pattern = "{date} - {number} - {label} - {subject}"
 subject_only = true         # rename with just the subject when no file number was found
