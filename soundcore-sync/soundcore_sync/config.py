@@ -104,6 +104,12 @@ class SubjectConfig:
 
 
 @dataclass
+class UiConfig:
+    notifications: bool = True            # desktop notifications (recording received, transcript ready...)
+    tray: bool = True                     # icon next to the clock (needs: pip install -e ".[tray]")
+
+
+@dataclass
 class LoggingConfig:
     file: Path | None = None
     level: str = "INFO"
@@ -116,6 +122,7 @@ class Config:
     transcription: TranscriptionConfig = field(default_factory=TranscriptionConfig)
     rename: RenameConfig = field(default_factory=RenameConfig)
     subject: SubjectConfig = field(default_factory=SubjectConfig)
+    ui: UiConfig = field(default_factory=UiConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     source: Path | None = None
 
@@ -165,6 +172,7 @@ class Config:
         _apply(cfg.subject, data.get("subject", {}))
         if cfg.subject.backend not in ("heuristic", "ollama", "auto", "off"):
             raise ValueError("subject.backend must be heuristic, ollama, auto or off")
+        _apply(cfg.ui, data.get("ui", {}))
         log = data.get("logging", {})
         if log.get("file"):
             cfg.logging.file = expand(log["file"])
@@ -255,6 +263,10 @@ enabled = true
 backend = "heuristic"
 model = "qwen3:4b"        # for ollama/auto; the README shows how to reuse a GGUF already on disk
 max_words = 8
+
+[ui]
+notifications = true      # a Windows notification when a recording arrives, a transcript is ready, a file needs review
+tray = true               # an icon next to the clock showing what the tool is doing (pip install -e ".[tray]")
 
 [logging]
 level = "INFO"

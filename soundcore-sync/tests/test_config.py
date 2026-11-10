@@ -58,3 +58,8 @@ def test_rename_section(monkeypatch):
     assert cfg.rename.auto_on_name_match is True and cfg.rename.companions == (".txt",)
     with pytest.raises(ValueError):
         Config.from_dict({"rename": {"mode": "maybe"}})
+
+
+def test_ui_section():
+    cfg = Config.from_dict({"ui": {"tray": False}})
+    assert cfg.ui.tray is False and cfg.ui.notifications is True

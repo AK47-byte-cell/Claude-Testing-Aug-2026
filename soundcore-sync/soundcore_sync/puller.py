@@ -11,6 +11,7 @@ from pathlib import Path
 from .ble import DownloadedRecording, RecorderClient, RecorderError, RecorderNotFound, Recording
 from .config import Config
 from .manifest import Manifest
+from .notify import Notifier, hms
 
 log = logging.getLogger(__name__)
 
@@ -26,11 +27,12 @@ def write_atomic(path: Path, data: bytes) -> None:
 
 
 class Puller:
-    def __init__(self, cfg: Config, manifest: Manifest):
+    def __init__(self, cfg: Config, manifest: Manifest, notifier: Notifier | None = None):
         self.cfg = cfg
         self.manifest = manifest
         self.inbox = cfg.folders.inbox
         self.state_dir = cfg.folders.state_dir
+        self.notifier = notifier or Notifier(enabled=False)
 
     # ---- one pass -----------------------------------------------------------------------
 
@@ -50,14 +52,18 @@ class Puller:
                 log.info("Nothing new on the recorder")
                 return 0
             log.info("%d new recording(s) to pull", len(todo))
-            for rec in todo:
+            for i, rec in enumerate(todo, 1):
+                self.notifier.state("pulling", f"{i}/{len(todo)} ({rec.recorded_at:%H:%M})")
                 try:
                     dl = await client.download(rec)
                 except RecorderError as exc:
                     log.error("Download of %s failed: %s", rec.file_id_hex, exc)
+                    self.notifier.state("error", f"transfert de {rec.recorded_at:%H:%M} interrompu")
                     break  # the link is in an unknown state: reconnect on the next pass
                 self._save(dl)
                 saved += 1
+            else:
+                self.notifier.state("idle")
         return saved
 
     def _already_have(self, rec: Recording) -> bool:
@@ -81,6 +87,7 @@ class Puller:
             (raw_dir / f"raw_{rec.file_id_hex}.bin").write_bytes(dl.raw)
         self.manifest.mark_pulled(rec.file_id_hex, rec.recorded_at, rec.size, path)
         log.info("Saved %s", path)
+        self.notifier.send("Enregistrement reçu", f"{path.name} ({hms(dl.packet_count * 0.06)})", open_on_click=path.parent)
         return path
 
     # ---- loop ---------------------------------------------------------------------------

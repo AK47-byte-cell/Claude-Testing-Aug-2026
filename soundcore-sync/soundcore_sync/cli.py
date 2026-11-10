@@ -239,18 +239,21 @@ def cmd_undo(cfg: Config, args) -> int:
 
 
 def cmd_run(cfg: Config, args) -> int:
+    from .notify import Notifier, Status
     from .puller import Puller
     from .transcriber import TranscribeLoop
 
     cfg.ensure_dirs()
     manifest = Manifest(cfg.folders.state_dir / "manifest.sqlite")
+    status = Status()
+    notifier = Notifier(cfg.ui.notifications and not args.quiet, status)
     stop = threading.Event()
     threads: list[threading.Thread] = []
     if cfg.recorder.enabled and not args.no_pull:
-        threads.append(threading.Thread(target=Puller(cfg, manifest).run_forever, args=(stop,),
+        threads.append(threading.Thread(target=Puller(cfg, manifest, notifier).run_forever, args=(stop,),
                                         name="puller", daemon=True))
     if cfg.transcription.enabled and not args.no_transcribe:
-        loop = TranscribeLoop(cfg, manifest, build_engine(cfg), build_subject_engine(cfg))
+        loop = TranscribeLoop(cfg, manifest, build_engine(cfg), build_subject_engine(cfg), notifier)
         threads.append(threading.Thread(target=loop.run_forever, args=(stop,), name="transcriber", daemon=True))
     if not threads:
         print("Nothing enabled; check the config.")
@@ -266,10 +269,25 @@ def cmd_run(cfg: Config, args) -> int:
     log.info("soundcore-sync %s starting (inbox: %s)", __version__, cfg.folders.inbox)
     for t in threads:
         t.start()
+
+    tray = None
+    if cfg.ui.tray and not args.no_tray:
+        from . import tray as tray_mod
+
+        if tray_mod.available():
+            tray = tray_mod.Tray(status, inbox=cfg.folders.inbox, log_file=cfg.logging.file,
+                                 config_path=cfg.source, on_quit=_stop,
+                                 pending_count=lambda: len(manifest.pending_proposals()))
+        else:
+            log.info("Tray icon not shown: install it with  pip install -e \".[tray]\"")
     try:
-        while any(t.is_alive() for t in threads) and not stop.is_set():
-            for t in threads:
-                t.join(timeout=1.0)
+        if tray is not None:
+            tray.run()  # blocks on the main thread until Quit
+            _stop()
+        else:
+            while any(t.is_alive() for t in threads) and not stop.is_set():
+                for t in threads:
+                    t.join(timeout=1.0)
     except KeyboardInterrupt:
         _stop()
     stop.set()
@@ -289,6 +307,8 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("run", help="run both loops until stopped (default)")
     p.add_argument("--no-pull", action="store_true", help="do not talk to the recorder")
     p.add_argument("--no-transcribe", action="store_true", help="do not transcribe")
+    p.add_argument("--no-tray", action="store_true", help="no icon next to the clock")
+    p.add_argument("--quiet", action="store_true", help="no desktop notifications")
     p.set_defaults(func=cmd_run)
     sub.add_parser("pull", help="pull new recordings once").set_defaults(func=cmd_pull)
     p = sub.add_parser("transcribe", help="transcribe pending files once")

@@ -55,5 +55,9 @@ backend = "heuristic"
 model = "qwen3:4b"        # for ollama/auto; the README shows how to reuse a GGUF already on disk
 max_words = 8
 
+[ui]
+notifications = true      # a Windows notification when a recording arrives, a transcript is ready, a file needs review
+tray = true               # an icon next to the clock showing what the tool is doing (pip install -e ".[tray]")
+
 [logging]
 level = "INFO"

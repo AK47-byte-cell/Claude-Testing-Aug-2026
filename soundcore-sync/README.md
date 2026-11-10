@@ -54,6 +54,24 @@ Transfer speed is set by the recorder's Bluetooth link: roughly one minute of tr
 minutes of audio. A one-hour meeting is on your disk about six minutes after you set the recorder
 down.
 
+## What you will see
+
+The tool runs hidden, so it tells you what it does in three ways.
+
+* **Notifications** (Windows toasts; native notifications on macOS and Linux): "Enregistrement reçu"
+  when a recording has been copied from the recorder, with its length; "Transcription prête" when the
+  transcript is written, and clicking it opens the text file; "Numéro de dossier à confirmer" when a
+  recording is waiting in `review`; "Échec de transcription" only after the last retry.
+* **An icon next to the clock**: grey while waiting, blue while transferring from the recorder, orange
+  while transcribing, red after an error. Hovering shows what it is doing; its menu opens the
+  recordings folder, the log, the review step in a console window, or quits the tool. The icon needs
+  two small extra packages: `.venv\Scripts\pip install -e ".[windows]"` (also installs `winotify`, which
+  makes the notifications clickable).
+* **The files themselves**: the recording and its `.txt` appear in the Import folder, in Explorer and
+  in OneDrive on the phone, renamed with the file number and subject once known.
+
+The phone gets no notification of its own; OneDrive does not alert on new files.
+
 ## What you need to know about the recorder
 
 * The recorder accepts **one Bluetooth connection at a time**. If the soundcore app on your phone is
@@ -77,7 +95,7 @@ down.
 
    ```powershell
    py -3 -m venv .venv
-   .venv\Scripts\pip install -e .
+   .venv\Scripts\pip install -e ".[windows]"
    .venv\Scripts\soundcore-sync init
    ```
 
@@ -135,7 +153,7 @@ community reverse-engineering and a different firmware may shift them.
 
 | Command | What it does |
 | --- | --- |
-| `soundcore-sync run` | Run both loops until stopped (what the background task runs). `--no-pull` / `--no-transcribe` to run one. |
+| `soundcore-sync run` | Run both loops until stopped (what the background task runs). `--no-pull` / `--no-transcribe` to run one; `--no-tray`, `--quiet` to silence the cues. |
 | `soundcore-sync pull` | Look for the recorder once and pull anything new. |
 | `soundcore-sync transcribe` | Transcribe everything pending in the inbox once. `--file X` for one file. |
 | `soundcore-sync scan` | Is the recorder visible right now? |
@@ -167,6 +185,7 @@ See `config.example.toml`. The important ones:
 | `rename.subject_only` | Rename with just the title when no file number was found (default: yes). |
 | `subject.backend` | `heuristic` (first sentence, default), `ollama` (local model), `auto` (model, else first sentence), `off`. |
 | `subject.model` | Ollama model for `ollama`/`auto`; `qwen3:4b` by default. |
+| `ui.notifications` / `ui.tray` | Desktop notifications and the icon next to the clock. |
 
 ## Development
 

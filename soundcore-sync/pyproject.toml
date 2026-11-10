@@ -17,6 +17,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+tray = ["pystray>=0.19", "pillow>=10.0"]
+windows = ["winotify>=1.1", "pystray>=0.19", "pillow>=10.0"]
 dev = ["pytest>=8.0", "ruff>=0.4"]
 
 [project.scripts]

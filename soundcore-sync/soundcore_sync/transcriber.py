@@ -14,6 +14,7 @@ from typing import Protocol
 from .config import Config
 from .manifest import Manifest
 from .matters import MatterIndex
+from .notify import Notifier
 from .renamer import Proposal, build_stem, propose, rename_set
 from .subject import SubjectEngine
 
@@ -195,12 +196,13 @@ class _Seen:
 
 class TranscribeLoop:
     def __init__(self, cfg: Config, manifest: Manifest, engine: TranscriptionEngine,
-                 subject: SubjectEngine | None = None):
+                 subject: SubjectEngine | None = None, notifier: Notifier | None = None):
         self.cfg = cfg
         self.tc = cfg.transcription
         self.manifest = manifest
         self.engine = engine
         self.subject = subject
+        self.notifier = notifier or Notifier(enabled=False)
         self.inbox = cfg.folders.inbox
         self._seen: dict[Path, _Seen] = {}
         self._wake = threading.Event()
@@ -272,6 +274,7 @@ class TranscribeLoop:
         st = path.stat()
         txt, md = self.transcript_paths(path)
         log.info("Transcribing %s (%.1f MB)", path.name, st.st_size / 1e6)
+        self.notifier.state("transcribing", path.name)
         started = time.monotonic()
         try:
             result = self.engine.transcribe(path)
@@ -283,6 +286,10 @@ class TranscribeLoop:
             attempts = self.manifest.mark_failed(path, st.st_size, st.st_mtime, f"{type(exc).__name__}: {exc}")
             log.exception("Transcription of %s failed (attempt %d/%d)", path.name, attempts,
                           self.tc.max_attempts)
+            self.notifier.state("error", f"transcription de {path.name}")
+            if attempts >= self.tc.max_attempts:
+                self.notifier.send("Échec de transcription", f"{path.name} : {type(exc).__name__}",
+                                   open_on_click=self.cfg.logging.file)
             return None
         self.manifest.mark_transcribed(path, st.st_size, st.st_mtime, sha256_file(path), txt,
                                        self.engine.name, result.language)
@@ -291,6 +298,8 @@ class TranscribeLoop:
             txt = self.maybe_rename(path, txt, render_text(result), result.language) or txt
         except Exception:
             log.exception("Renaming of %s failed; the file keeps its name", path.name)
+        self.notifier.state("idle")
+        self.notifier.send("Transcription prête", txt.name, open_on_click=txt)
         return txt
 
     # ---- renaming -----------------------------------------------------------------------
@@ -335,6 +344,9 @@ class TranscribeLoop:
                                                     for c in prop.candidates), subject)
             log.info("Proposed for %s: %s %s (%s, %s); run `soundcore-sync review`",
                      current.name, prop.number, prop.label or "", prop.method, prop.confidence)
+            self.notifier.send("Numéro de dossier à confirmer",
+                               f"{current.name} → {prop.number} {prop.label or ''}".strip(),
+                               open_on_click=current.parent)
         elif new_txt is None:
             log.info("No file number or subject found for %s", audio.name)
         return new_txt
