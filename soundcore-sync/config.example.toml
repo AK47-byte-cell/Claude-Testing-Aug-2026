@@ -46,11 +46,13 @@ pattern = "{date} - {number} - {label} - {subject}"
 subject_only = true         # rename with just the subject when no file number was found
 
 [subject]
-# Short title ("Rencontre avec M. Tremblay, rapport d'expert") produced ON THIS LAPTOP by a small
-# language model served by Ollama (https://ollama.com). Install Ollama, then: ollama pull qwen2.5:3b
-# If Ollama is not running, titles are skipped and names use the client name only.
+# Short title added to the file name ("Rencontre avec M. Tremblay rapport d'expert"), produced on this laptop.
+#   heuristic = the first sentence of the dictation (Whisper's text is all it needs)   <- default
+#   ollama    = a small language model served by Ollama reads the transcript and writes the title
+#   auto      = ollama when it answers, otherwise heuristic
 enabled = true
-model = "qwen2.5:3b"
+backend = "heuristic"
+model = "qwen3:4b"        # for ollama/auto; the README shows how to reuse a GGUF already on disk
 max_words = 8
 
 [logging]

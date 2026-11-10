@@ -95,8 +95,8 @@ class RenameConfig:
 @dataclass
 class SubjectConfig:
     enabled: bool = True
-    backend: str = "ollama"               # only "ollama" for now
-    model: str = "qwen2.5:3b"             # small, bilingual, fine on a CPU
+    backend: str = "heuristic"            # heuristic = first sentence; ollama = local model; auto = model, else first sentence
+    model: str = "qwen3:4b"               # Ollama model name (see README to reuse a GGUF already on disk)
     url: str = "http://127.0.0.1:11434"
     max_chars: int = 3000                 # how much of the transcript the model sees
     timeout_seconds: float = 120.0
@@ -163,6 +163,8 @@ class Config:
         if cfg.rename.mode not in ("auto", "propose", "off"):
             raise ValueError("rename.mode must be auto, propose or off")
         _apply(cfg.subject, data.get("subject", {}))
+        if cfg.subject.backend not in ("heuristic", "ollama", "auto", "off"):
+            raise ValueError("subject.backend must be heuristic, ollama, auto or off")
         log = data.get("logging", {})
         if log.get("file"):
             cfg.logging.file = expand(log["file"])
@@ -245,11 +247,13 @@ pattern = "{date} - {number} - {label} - {subject}"
 subject_only = true         # rename with just the subject when no file number was found
 
 [subject]
-# Short title ("Rencontre avec M. Tremblay, rapport d'expert") produced ON THIS LAPTOP by a small
-# language model served by Ollama (https://ollama.com). Install Ollama, then: ollama pull qwen2.5:3b
-# If Ollama is not running, titles are skipped and names use the client name only.
+# Short title added to the file name ("Rencontre avec M. Tremblay rapport d'expert"), produced on this laptop.
+#   heuristic = the first sentence of the dictation (Whisper's text is all it needs)   <- default
+#   ollama    = a small language model served by Ollama reads the transcript and writes the title
+#   auto      = ollama when it answers, otherwise heuristic
 enabled = true
-model = "qwen2.5:3b"
+backend = "heuristic"
+model = "qwen3:4b"        # for ollama/auto; the README shows how to reuse a GGUF already on disk
 max_words = 8
 
 [logging]

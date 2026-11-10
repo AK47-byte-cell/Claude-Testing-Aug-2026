@@ -36,12 +36,17 @@ script, wait, fetch the transcript. After: record, put the recorder on the desk,
   (or applied, with `auto_on_name_match = true`), and `soundcore-sync review` lets you accept it, type
   another number, or reject it. The original name is kept, and `soundcore-sync undo "<file>"` restores
   it. Nothing is sent to any outside service.
-* **Subject titles, on the laptop.** With [Ollama](https://ollama.com) installed, a small language
-  model running on the laptop reads the start of the transcript and adds a short title, so the name
-  becomes `2026-11-05_14-35 - 1234-56 - Tremblay c. Assurances XYZ - Rencontre avec M. Tremblay.ogg`.
-  A recording with a title but no file number is named `2026-11-05_14-35 - Rencontre avec M. Tremblay.ogg`
-  and still goes to `review` if the names suggested a file. The transcript never leaves the machine.
-  Without Ollama, titles are skipped and the names use the client name only.
+* **Subject titles, on the laptop.** A short title is added to the name:
+  `2026-11-05_14-35 - 1234-56 - Tremblay c. Assurances XYZ - Rencontre avec M. Tremblay.ogg`.
+  Whisper only converts speech to text, so it cannot say what a recording is about; the title comes
+  from one of two local sources. By default it is the **first sentence of the dictation**, minus the
+  file number and the "alors, bon, dossier..." preamble, which works well when you start each recording
+  by stating the subject ("Rencontre avec M. Tremblay au sujet du rapport d'expert"). Optionally, a
+  small language model served by [Ollama](https://ollama.com) on the laptop reads the start of the
+  transcript and writes a better title (`subject.backend = "auto"`), falling back to the first sentence
+  when Ollama is not running. A recording with a title but no file number is named
+  `2026-11-05_14-35 - Rencontre avec M. Tremblay.ogg` and still goes to `review` if the names suggested
+  a file. The transcript never leaves the machine either way.
 * A small database in `~/.soundcore-sync/` remembers what was pulled, transcribed and renamed, so
   nothing is done twice, even after a restart or a OneDrive re-sync.
 
@@ -103,11 +108,14 @@ down.
    `install\windows\uninstall-task.ps1` removes it. The log is at
    `%USERPROFILE%\.soundcore-sync\soundcore-sync.log`.
 
-7. Optional, for the subject titles: install Ollama for Windows from <https://ollama.com/download>,
-   then in PowerShell run `ollama pull qwen2.5:3b` once (about 2 GB). Ollama starts with Windows and
-   serves the model locally; `.venv\Scripts\soundcore-sync subject --text "Bonjour, ..."` checks
-   that it answers. A title takes a few seconds to a minute on a CPU. `qwen2.5:7b` gives better
-   titles if the laptop has 16 GB of memory or more.
+7. Optional, for model-written titles: install Ollama for Windows from <https://ollama.com/download>
+   and set `backend = "auto"` under `[subject]`. Ollama starts with Windows and serves the model
+   locally. Either `ollama pull qwen3:4b` (about 2.5 GB), or reuse the Qwen3-4B GGUF that Intel AI
+   Playground already put on the laptop: create a text file `Modelfile` containing one line,
+   `FROM C:\Users\Akallos\AppData\Local\Programs\AI Playground\resources\models\LLM\ggufLLM\unsloth---Qwen3-4B-GGUF\<the .gguf file>`,
+   run `ollama create qwen3:4b -f Modelfile`, and no download is needed. (The OpenVINO folders are a
+   different format and cannot be used by Ollama.) `.venv\Scripts\soundcore-sync subject --text "Dossier 1234-56, rencontre avec ..."`
+   shows the title either backend would produce. A model title takes a few seconds to a minute on a CPU.
 
 macOS: same steps with `python3 -m venv .venv` and `.venv/bin/...`; copy
 `install/macos/com.soundcore-sync.plist` to `~/Library/LaunchAgents/` (edit the two paths) and grant
@@ -157,7 +165,8 @@ See `config.example.toml`. The important ones:
 | `rename.auto_on_name_match` | Also rename automatically when only the names matched (default: propose). |
 | `rename.pattern` | Order of the name parts; missing parts are dropped. Default `{date} - {number} - {label} - {subject}`. |
 | `rename.subject_only` | Rename with just the title when no file number was found (default: yes). |
-| `subject.enabled` / `model` | Local title generation through Ollama; `qwen2.5:3b` by default. |
+| `subject.backend` | `heuristic` (first sentence, default), `ollama` (local model), `auto` (model, else first sentence), `off`. |
+| `subject.model` | Ollama model for `ollama`/`auto`; `qwen3:4b` by default. |
 
 ## Development
 

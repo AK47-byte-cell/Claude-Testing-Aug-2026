@@ -74,3 +74,82 @@ def test_engine_reports_model_errors(monkeypatch):
 def test_engine_ignores_tiny_text(monkeypatch):
     monkeypatch.setattr("urllib.request.urlopen", lambda req, timeout: (_ for _ in ()).throw(AssertionError))
     assert OllamaSubjectEngine().title("bonjour", None) is None
+
+
+# ---- first-sentence heuristic and backend selection -----------------------------------------
+
+from soundcore_sync.config import Config
+from soundcore_sync.subject import CompositeSubjectEngine, HeuristicSubjectEngine
+
+
+@pytest.mark.parametrize("text, expected", [
+    ("Dossier 1234-56. Rencontre avec monsieur Tremblay au sujet du rapport d'expert. Nous avons discuté",
+     "Rencontre avec monsieur Tremblay au sujet du rapport"),
+    ("Alors, bon, dossier numéro douze trente-quatre cinquante-six, appel de Me Lavoie concernant les engagements; elle",
+     "Appel de Me Lavoie concernant les engagements"),
+    ("OK so this is a dictation, file 1234-56, letter to the adjuster regarding the proof of loss. Dear",
+     "Letter to the adjuster regarding the proof of"),
+    ("Note au dossier. Appel téléphonique avec le client le 5 novembre. Il confirme",
+     "Appel téléphonique avec le client le 5 novembre"),
+    ("Bonjour. Euh.", None),
+    ("", None),
+])
+def test_heuristic_first_sentence(text, expected):
+    assert HeuristicSubjectEngine().title(text, "fr") == expected
+
+
+def test_heuristic_respects_max_words():
+    assert HeuristicSubjectEngine(max_words=3).title("Rencontre avec monsieur Tremblay au bureau.", None) == \
+        "Rencontre avec monsieur"
+
+
+class _Primary:
+    def __init__(self, result=None, raise_=False):
+        self.result, self.raise_ = result, raise_
+
+    def title(self, text, language):
+        if self.raise_:
+            raise RuntimeError("down")
+        return self.result
+
+
+def test_composite_prefers_model_then_falls_back():
+    text = "Dossier 1234-56. Rencontre avec monsieur Tremblay. Suite."
+    assert CompositeSubjectEngine(_Primary("Du modèle"), HeuristicSubjectEngine()).title(text, None) == "Du modèle"
+    assert CompositeSubjectEngine(_Primary(None), HeuristicSubjectEngine()).title(text, None) == \
+        "Rencontre avec monsieur Tremblay"
+    assert CompositeSubjectEngine(_Primary(raise_=True), HeuristicSubjectEngine()).title(text, None) == \
+        "Rencontre avec monsieur Tremblay"
+
+
+def test_clean_title_drops_thinking_block():
+    assert clean_title("<think>\nthe user wants...\n</think>\nAppel avec le client") == "Appel avec le client"
+
+
+def test_qwen3_requests_no_thinking(monkeypatch):
+    seen = {}
+
+    def fake_urlopen(req, timeout):
+        seen["body"] = json.loads(req.data)
+        return FakeResponse(json.dumps({"message": {"content": "Titre"}}).encode())
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    OllamaSubjectEngine(model="qwen3:4b").title("x" * 100, None)
+    assert seen["body"]["think"] is False
+    OllamaSubjectEngine(model="llama3.2:3b").title("x" * 100, None)
+    assert "think" not in seen["body"]
+
+
+def test_backend_selection():
+    from soundcore_sync.cli import build_subject_engine
+
+    cfg = Config()
+    assert isinstance(build_subject_engine(cfg), HeuristicSubjectEngine)
+    cfg.subject.backend = "auto"
+    assert isinstance(build_subject_engine(cfg), CompositeSubjectEngine)
+    cfg.subject.backend = "ollama"
+    assert isinstance(build_subject_engine(cfg), OllamaSubjectEngine)
+    cfg.subject.backend = "off"
+    assert build_subject_engine(cfg) is None
+    with pytest.raises(ValueError):
+        Config.from_dict({"subject": {"backend": "gpt"}})

@@ -44,15 +44,16 @@ def build_engine(cfg: Config):
 
 
 def build_subject_engine(cfg: Config):
-    sc = cfg.subject
-    if not sc.enabled:
-        return None
-    if sc.backend != "ollama":
-        log.warning("Unknown subject backend %r; titles disabled", sc.backend)
-        return None
-    from .subject import OllamaSubjectEngine
+    from .subject import CompositeSubjectEngine, HeuristicSubjectEngine, OllamaSubjectEngine
 
-    return OllamaSubjectEngine(sc.model, sc.url, sc.max_chars, sc.timeout_seconds, sc.max_words)
+    sc = cfg.subject
+    if not sc.enabled or sc.backend == "off":
+        return None
+    heuristic = HeuristicSubjectEngine(sc.max_words)
+    if sc.backend == "heuristic":
+        return heuristic
+    ollama = OllamaSubjectEngine(sc.model, sc.url, sc.max_chars, sc.timeout_seconds, sc.max_words)
+    return ollama if sc.backend == "ollama" else CompositeSubjectEngine(ollama, heuristic)
 
 
 def cmd_subject(cfg: Config, args) -> int:
@@ -65,9 +66,10 @@ def cmd_subject(cfg: Config, args) -> int:
     if not text:
         print("Give --file transcript.txt or --text \"...\"")
         return 2
-    print(f"Asking {cfg.subject.model} at {cfg.subject.url} ...")
+    print(f"Backend: {cfg.subject.backend}" + (f" ({cfg.subject.model} at {cfg.subject.url})"
+                                                 if cfg.subject.backend != "heuristic" else ""))
     title = engine.title(text, None)
-    print(f"Title: {title!r}" if title else "No title (is Ollama running and the model pulled?)")
+    print(f"Title: {title!r}" if title else "No title (with ollama: is it running and the model pulled?)")
     return 0 if title else 1
 
 
