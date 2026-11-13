@@ -1,0 +1,7 @@
+The files sdk_crypto.py, ogg_opus.py and the protocol logic in client.py are derived from
+"d3200-ble-note-downloader" by andrewseago
+(https://github.com/andrewseago/d3200-ble-note-downloader), licensed under the
+GNU General Public License v3.0 or later. The protocol itself was documented by the
+community (tacshi/Soundcore PROTOCOL.md, doofusdavid/soundcore-pull). This package is
+distributed under the same GPL-3.0-or-later terms as the rest of this repository.
+No part of this code is affiliated with or endorsed by Anker or soundcore.

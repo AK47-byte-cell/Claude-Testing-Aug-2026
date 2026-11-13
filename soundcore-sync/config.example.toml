@@ -1,0 +1,64 @@
+# soundcore-sync configuration. Copy to ~/.soundcore-sync/config.toml (or run: soundcore-sync init).
+# Paths may use ~ and environment variables such as %OneDrive% (Windows) or $HOME.
+
+[folders]
+# Where recordings are written by the Bluetooth puller AND watched for transcription.
+# Point this at a folder inside OneDrive and OneDrive takes care of the upload.
+# %OneDriveCommercial% is the work OneDrive ("Alexandra - GESTION GASLAW INC" in Explorer).
+# Check the real path in PowerShell with:  echo $env:OneDriveCommercial
+inbox = "%OneDriveCommercial%/Dictation/Import"
+# Leave empty to write transcripts next to each audio file.
+transcripts = ""
+
+[recorder]
+enabled = true
+scan_interval_seconds = 20     # how often to look for the recorder
+scan_timeout_seconds = 8       # length of each Bluetooth scan
+idle_interval_seconds = 60     # pause after a check that found nothing new
+filename_prefix = "soundcore"  # files are named 2026-11-04_14-35-07_soundcore.ogg
+
+[transcription]
+enabled = true
+model = "medium"          # tiny / base / small / medium / large-v3 (downloaded on first use)
+device = "cpu"            # cpu, cuda or auto
+compute_type = "int8"     # int8 on CPU; float16 on a GPU
+language = ""             # "" = detect per file; "fr" or "en" to force
+beam_size = 6
+vad_filter = true
+condition_on_previous_text = false
+# initial_prompt = "..."  # defaults to the bilingual legal-dictation prompt
+paragraph_chars = 900     # split long paragraphs at about this many characters (0 = never)
+rescan_interval_seconds = 30
+settle_seconds = 5
+write_markdown = false    # true also writes a timestamped .md beside the .txt
+recursive = false
+
+[rename]
+# After transcription, find the file number (said in the recording, or inferred from the names
+# in it matched against your list of files) and rename the audio and the transcript:
+#   2026-11-05_14-35 - 1234-56 - Tremblay c. Assurances XYZ.ogg
+enabled = true
+mode = "auto"               # auto = rename when confident; propose = only record a proposal; off
+# Your list of files: an Excel workbook, a folder of "1234-56 Client" sub-folders, or a CSV.
+# * and ? are allowed; the most recent matching file is used, so the date in the name may change.
+matters_source = "%OneDriveCommercial%/*AKS Liste dossiers.xlsm"
+auto_on_name_match = false  # true = also rename on a confident name match without a spoken number
+pattern = "{date} - {number} - {label} - {subject}"
+subject_only = true         # rename with just the subject when no file number was found
+
+[subject]
+# Short title added to the file name ("Rencontre avec M. Tremblay rapport d'expert"), produced on this laptop.
+#   heuristic = the first sentence of the dictation (Whisper's text is all it needs)   <- default
+#   ollama    = a small language model served by Ollama reads the transcript and writes the title
+#   auto      = ollama when it answers, otherwise heuristic
+enabled = true
+backend = "heuristic"
+model = "qwen3:4b"        # for ollama/auto; the README shows how to reuse a GGUF already on disk
+max_words = 8
+
+[ui]
+notifications = true      # a Windows notification when a recording arrives, a transcript is ready, a file needs review
+tray = true               # an icon next to the clock showing what the tool is doing (pip install -e ".[tray]")
+
+[logging]
+level = "INFO"

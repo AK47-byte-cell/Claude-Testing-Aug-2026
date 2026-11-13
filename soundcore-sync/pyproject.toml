@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "soundcore-sync"
+version = "0.1.0"
+description = "Pull soundcore Work recordings over Bluetooth (no phone app) and transcribe them locally with faster-whisper"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "GPL-3.0-or-later" }
+dependencies = [
+    "bleak>=0.22",
+    "cryptography>=42.0",
+    "faster-whisper>=1.0",
+    "watchdog>=4.0",
+    "openpyxl>=3.1",
+]
+
+[project.optional-dependencies]
+tray = ["pystray>=0.19", "pillow>=10.0"]
+windows = ["winotify>=1.1", "pystray>=0.19", "pillow>=10.0"]
+dev = ["pytest>=8.0", "ruff>=0.4"]
+
+[project.scripts]
+soundcore-sync = "soundcore_sync.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["soundcore_sync*"]
+
+[tool.ruff]
+line-length = 120
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

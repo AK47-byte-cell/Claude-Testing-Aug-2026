@@ -1,0 +1,14 @@
+# Copy to ~/.config/systemd/user/, replace the paths, then:
+#   systemctl --user daemon-reload && systemctl --user enable --now soundcore-sync
+[Unit]
+Description=soundcore Work recorder sync and transcription
+After=bluetooth.target
+
+[Service]
+WorkingDirectory=/PATH/TO/soundcore-sync
+ExecStart=/PATH/TO/soundcore-sync/.venv/bin/python -m soundcore_sync run
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target
